@@ -71,6 +71,7 @@ let firstFix = false;
 let lastOverpassAt = 0, lastOverpassCenter = null;
 let lastPlacesAt = 0, lastPlacesCenter = null;
 let roads = [], places = [];
+let graph = new Map();   // graphe routier : clé nœud -> { p:[lat,lon], e:[arêtes] }
 let watchId = null, wakeLock = null, followMode = true;
 const anim = { from: null, to: null, start: 0, dur: 1000, render: CHALON };
 const dbg = { fixes: 0, dt: 0, lat: 0, lon: 0, acc: 0, vgps: null, vcalc: 0,
@@ -120,7 +121,7 @@ function initMap() {
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
     maxZoom: 20, attribution: '© OpenStreetMap © CARTO',
   }).addTo(map);
-  headingRay = L.polyline([], { color: '#18c37d', weight: 4, opacity: 0.8, dashArray: '2 9', lineCap: 'round' }).addTo(map);
+  headingRay = L.polyline([], { color: '#18c37d', weight: 7, opacity: 0.65, lineCap: 'round', lineJoin: 'round' }).addTo(map);
   trailLine = L.polyline([], { color: '#2f81f7', weight: 5, opacity: 0.55 }).addTo(map);
   accCircle = L.circle(CHALON, { radius: 0, color: '#2f81f7', weight: 1, fillColor: '#2f81f7', fillOpacity: 0.12 });
   const icon = L.divIcon({ className: '',
@@ -175,11 +176,6 @@ function renderLoop() {
   if (wrap) {
     if (hdg !== null) { wrap.style.transform = `rotate(${hdg}deg)`; wrap.classList.add('moving'); }
     else wrap.classList.remove('moving');
-  }
-  // Rayon de trajectoire (depuis la position rendue, vers le cap)
-  if (hdg !== null) {
-    const len = Math.max(120, Math.min(900, smoothedSpeed * 10));
-    headingRay.setLatLngs([anim.render, destination(anim.render, hdg, len)]);
   }
 }
 
@@ -289,19 +285,33 @@ async function updatePredictions(here) {
     }
   }
 
-  // 1) Prochaine rue
-  const streetsNear = roadsAhead(here, hdg, streetAhead, 30);
-  if (streetsNear.length) {
-    document.getElementById('nextStreet').textContent = streetsNear[0].name;
-    document.getElementById('nextDist').textContent = fmtDist(streetsNear[0].dist);
-    document.getElementById('upcoming').innerHTML =
-      streetsNear.slice(1, 4).map(s => `<span class="chip">→ ${s.name}</span>`).join('');
-    nextMarker.setLatLng(streetsNear[0].point);
-    if (!map.hasLayer(nextMarker)) nextMarker.addTo(map);
+  // 1) Prochaine rue — en SUIVANT le graphe routier (itinéraire le plus probable)
+  const path = predictPath(here, hdg, axisAhead);
+  let pathStreets = [];
+  if (path) {
+    pathStreets = path.streets;
+    headingRay.setLatLngs(path.poly);          // trace l'itinéraire prédit sur la carte
+    if (pathStreets.length) {
+      const s0 = pathStreets[0];
+      const t = turnLabel(s0.turn);
+      document.getElementById('nextStreet').textContent = s0.name;
+      document.getElementById('nextTurn').textContent = `${t.icon} ${t.txt}`;
+      document.getElementById('nextDist').textContent = fmtDist(s0.dist);
+      const chips = [];
+      if (path.fork) chips.push(`<span class="chip fork">ou ${turnLabel(path.fork.turn).icon} ${path.fork.name}</span>`);
+      for (const s of pathStreets.slice(1, 4)) chips.push(`<span class="chip">${turnLabel(s.turn).icon} ${s.name}</span>`);
+      document.getElementById('upcoming').innerHTML = chips.join('');
+      nextMarker.setLatLng(s0.point);
+      if (!map.hasLayer(nextMarker)) nextMarker.addTo(map);
+    } else {
+      document.getElementById('nextTurn').textContent = '↑ tout droit';
+    }
   }
 
   // 2) DIRECTION = quartier vers lequel on va (sinon grand axe : avenue/boulevard)
-  const axisCands = roadsAhead(here, hdg, axisAhead, 45);
+  const curRoad = nearestSegment(here);
+  const axisCands = pathStreets.slice();
+  if (curRoad) axisCands.push({ name: curRoad.name, cls: curRoad.cls, dist: 0 });
   const axis = pickMajorAxis(axisCands);
   const quartier = pickQuartier(here, hdg, spd);
   const dName = document.getElementById('directionName');
@@ -332,36 +342,106 @@ async function updatePredictions(here) {
   document.getElementById('currentStreet').textContent = cur ? cur.name : '—';
 }
 
-/* Rues croisées devant nous, triées par distance */
-function roadsAhead(here, hdg, maxDist, tol) {
-  if (!roads.length) return [];
-  const current = nearestRoad(here);
-  const currentName = current ? current.name : null;
-  const out = [], seen = new Set();
-  for (let d = 30; d <= maxDist; d += 25) {
-    const probe = destination(here, hdg, d);
-    let best = null;
-    for (const road of roads)
-      for (let i = 0; i < road.geom.length - 1; i++) {
-        const seg = pointToSegment(probe, road.geom[i], road.geom[i + 1]);
-        if (!best || seg.dist < best.dist) best = { name: road.name, cls: road.cls, dist: seg.dist, point: seg.point };
-      }
-    if (best && best.dist < 30 && best.name !== currentName && !seen.has(best.name)) {
-      if (Math.abs(angleDiff(hdg, bearing(here, best.point))) < tol) {
-        seen.add(best.name);
-        out.push({ name: best.name, cls: best.cls, dist: haversine(here, best.point), point: best.point });
-      }
+/* ---------- Suivi du graphe routier (itinéraire le plus probable) ---------- */
+const nodeKey = p => p[0].toFixed(6) + ',' + p[1].toFixed(6);
+
+/* Construit le graphe : chaque nœud OSM -> arêtes vers ses voisins */
+function buildGraph() {
+  graph = new Map();
+  const add = (a, b, name, cls) => {
+    const ka = nodeKey(a);
+    if (!graph.has(ka)) graph.set(ka, { p: a, e: [] });
+    graph.get(ka).e.push({ to: nodeKey(b), p: b, name, cls, brng: bearing(a, b) });
+  };
+  for (const road of roads)
+    for (let i = 0; i < road.geom.length - 1; i++) {
+      add(road.geom[i], road.geom[i + 1], road.name, road.cls);
+      add(road.geom[i + 1], road.geom[i], road.name, road.cls);
     }
-  }
-  out.sort((a, b) => a.dist - b.dist);
-  return out;
 }
 
-/* Choisit la voie la plus « importante » parmi les candidates */
+/* Segment routier le plus proche de la position (la rue où l'on roule) */
+function nearestSegment(here) {
+  let best = null;
+  for (const road of roads)
+    for (let i = 0; i < road.geom.length - 1; i++) {
+      const a = road.geom[i], b = road.geom[i + 1];
+      const seg = pointToSegment(here, a, b);
+      if (!best || seg.dist < best.dist) best = { a, b, name: road.name, cls: road.cls, dist: seg.dist };
+    }
+  return best && best.dist < 60 ? best : null;
+}
+
+function turnLabel(turn) {
+  const a = Math.abs(turn);
+  if (a < 22) return { icon: '↑', txt: 'tout droit' };
+  if (a < 55) return turn > 0 ? { icon: '↗', txt: 'à droite' } : { icon: '↖', txt: 'à gauche' };
+  return turn > 0 ? { icon: '↱', txt: 'à droite' } : { icon: '↰', txt: 'à gauche' };
+}
+
+/* Prédit l'itinéraire en SUIVANT les rues : on reste sur sa voie et, à chaque
+   intersection, on choisit la continuation la plus probable (la plus droite,
+   même nom prioritaire, plus gros axe), sans demi-tour. Renvoie la suite des
+   rues réellement empruntées + la géométrie du trajet + d'éventuelles bifurcations. */
+function predictPath(here, hdg, maxDist) {
+  const seg = nearestSegment(here);
+  if (!seg) return null;
+  // Sens de circulation le long du segment courant, aligné sur le cap
+  let prevKey, curKey, curP, curBrng, curName, curCls;
+  if (Math.abs(angleDiff(hdg, bearing(seg.a, seg.b))) <= Math.abs(angleDiff(hdg, bearing(seg.b, seg.a)))) {
+    prevKey = nodeKey(seg.a); curKey = nodeKey(seg.b); curP = seg.b; curBrng = bearing(seg.a, seg.b);
+  } else {
+    prevKey = nodeKey(seg.b); curKey = nodeKey(seg.a); curP = seg.a; curBrng = bearing(seg.b, seg.a);
+  }
+  curName = seg.name; curCls = seg.cls;
+
+  const streets = [];                  // { name, cls, point, dist, turn }
+  const poly = [here, curP];
+  let traveled = haversine(here, curP);
+  let lastName = seg.name;
+  let fork = null;                     // alternative au premier vrai changement de rue
+
+  for (let steps = 0; steps < 120 && traveled < maxDist; steps++) {
+    const node = graph.get(curKey);
+    if (!node) break;
+    let best = null, second = null;
+    for (const e of node.e) {
+      if (e.to === prevKey && e.name === curName) continue; // pas de demi-tour sur la même voie
+      const turn = angleDiff(curBrng, e.brng);
+      if (Math.abs(turn) > 140) continue;                   // demi-tour : impossible
+      const score = -Math.abs(turn)                          // priorité à la trajectoire la plus droite
+                    + (e.name === curName ? 60 : 0)          // continuité de la même rue
+                    + (roadScore(e.cls, e.name)) * 5;        // gros axes plus probables
+      const cand = { e, turn, score };
+      if (!best || score > best.score) { second = best; best = cand; }
+      else if (!second || score > second.score) second = cand;
+    }
+    if (!best) break;                                        // cul-de-sac
+    const e = best.e;
+
+    // Changement de rue = une « prochaine rue » de l'itinéraire
+    if (e.name && e.name !== lastName) {
+      streets.push({ name: e.name, cls: e.cls, point: node.p, dist: traveled, turn: best.turn });
+      // À une intersection ambiguë (virage marqué + alternative comparable), on note la bifurcation
+      if (streets.length === 1 && second && Math.abs(best.turn) > 35 &&
+          best.score - second.score < 25 && second.e.name && second.e.name !== lastName) {
+        fork = { name: second.e.name, turn: second.turn };
+      }
+      lastName = e.name;
+    }
+    traveled += haversine(node.p, e.p);
+    poly.push(e.p);
+    prevKey = curKey; curKey = e.to; curP = e.p; curBrng = e.brng; curName = e.name; curCls = e.cls;
+    if (streets.length >= 5) break;
+  }
+  return { streets, poly, fork };
+}
+
+/* Choisit la voie la plus importante de l'itinéraire (pour « par … ») */
 function pickMajorAxis(cands) {
   let best = null;
   for (const c of cands) {
-    const s = roadScore(c.cls, c.name) - c.dist / 1500; // pénalise un peu la distance
+    const s = roadScore(c.cls, c.name) - c.dist / 1500;
     if (!best || s > best.s) best = { name: c.name, dist: c.dist, s };
   }
   return best;
@@ -423,6 +503,7 @@ async function fetchRoads(center) {
   if (!data) { dbg.overpass = 'erreur'; return; }
   roads = (data.elements || []).filter(e => e.geometry && e.tags && e.tags.name)
     .map(e => ({ name: e.tags.name, cls: e.tags.highway, geom: e.geometry.map(g => [g.lat, g.lon]) }));
+  buildGraph();
   dbg.overpass = `ok (${roads.length})`;
 }
 

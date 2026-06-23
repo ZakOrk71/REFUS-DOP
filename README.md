@@ -3,7 +3,11 @@
 Web app mobile qui suit ta position **GPS en temps réel** et indique, pendant
 un refus d'obtempérer :
 
-- 🛣️ **La prochaine rue probable** selon ta trajectoire (cap + réseau routier réel OSM), avec distance
+- 🛣️ **La prochaine rue probable** en **suivant le graphe routier réel** : l'app reste sur ta voie
+  et, à chaque intersection, choisit la continuation la plus probable (la plus droite, même nom
+  prioritaire, plus gros axe, sans demi-tour). Elle indique **tout droit / à gauche / à droite**,
+  la distance, et signale les **bifurcations** (en T : « à gauche ou à droite »).
+  Elle ne nomme donc plus une rue perpendiculaire qu'on ne peut pas traverser tout droit.
 - ➡️ **La direction (grand axe)** : l'avenue / le boulevard / la voie majeure vers laquelle tu vas,
   choisie par importance réelle de la voie (les noms qu'on utilise vraiment en intervention),
   + le quartier connu en complément s'il existe

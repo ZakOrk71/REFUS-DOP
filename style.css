@@ -126,11 +126,24 @@ html, body {
   white-space: nowrap;
 }
 
+.turn {
+  margin-top: 2px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #ffd27a;
+  letter-spacing: 0.3px;
+}
+
 .upcoming {
   margin-top: 5px;
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+}
+.upcoming .chip.fork {
+  background: rgba(245,166,35,0.18);
+  border-color: rgba(245,166,35,0.5);
+  color: #ffd9a0;
 }
 .upcoming .chip {
   font-size: 12px;
