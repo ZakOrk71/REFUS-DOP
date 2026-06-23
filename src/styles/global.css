@@ -1,0 +1,186 @@
+:root {
+  --bg: #05070f;
+  --panel: rgba(10, 16, 30, 0.92);
+  --accent: #2f81f7;
+  --accent-2: #16c37d;
+  --warn: #ff5a5a;
+  --text: #f4f7ff;
+  --muted: #9fb0d0;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body, #root {
+  margin: 0;
+  height: 100%;
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.app { position: fixed; inset: 0; }
+.map { position: absolute; inset: 0; background: var(--bg); }
+
+/* ---------- Marqueur véhicule ---------- */
+.vehicle { width: 0; height: 0; }
+.vehicle-arrow {
+  position: absolute;
+  left: -15px; top: -18px;
+  width: 30px; height: 36px;
+  transition: transform 0.12s linear;
+  transform-origin: center 60%;
+  background: var(--accent);
+  /* Flèche/chevron pointant vers le haut (sens de marche). */
+  clip-path: polygon(50% 0%, 100% 100%, 50% 76%, 0% 100%);
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.7));
+}
+.vehicle::after {
+  content: '';
+  position: absolute;
+  left: -7px; top: -7px;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: rgba(47, 129, 247, 0.18);
+  box-shadow: 0 0 0 6px rgba(47, 129, 247, 0.12);
+}
+
+/* ---------- HUD ---------- */
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 400;
+}
+.hud-top {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  left: 8px; right: 8px;
+  display: flex;
+  gap: 8px;
+}
+.hud-card {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 8px 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+.hud-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.hud-street { font-size: 22px; font-weight: 800; color: var(--accent); line-height: 1.15; word-break: break-word; }
+.hud-quartier { font-size: 22px; font-weight: 800; color: var(--accent-2); line-height: 1.15; word-break: break-word; }
+
+.speedo {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 6px 18px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+.speedo-val { font-size: 46px; font-weight: 900; line-height: 1; letter-spacing: -1px; }
+.speedo-unit { font-size: 14px; color: var(--muted); font-weight: 700; }
+
+.hud-error {
+  position: absolute;
+  left: 12px; right: 12px;
+  bottom: 170px;
+  background: rgba(255, 90, 90, 0.16);
+  border: 1px solid rgba(255, 90, 90, 0.5);
+  color: #ffd2d2;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* ---------- Boutons flottants ---------- */
+.float-controls {
+  position: absolute;
+  right: 12px;
+  bottom: 100px;
+  z-index: 450;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fbtn {
+  width: 50px; height: 50px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 22px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.fbtn.on { color: var(--accent); border-color: rgba(47, 129, 247, 0.6); }
+.fbtn:active { transform: scale(0.94); }
+
+/* ---------- Bouton session ---------- */
+.session-btn {
+  position: absolute;
+  left: 12px; right: 12px;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  z-index: 450;
+  padding: 18px;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #fff;
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.session-btn.start { background: linear-gradient(90deg, #2f81f7, #16c37d); }
+.session-btn.stop { background: linear-gradient(90deg, #ff5a5a, #c01d1d); }
+.session-btn:active { transform: scale(0.99); }
+
+/* ---------- Écran de démarrage ---------- */
+.gate {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  background: radial-gradient(circle at 50% 28%, #0e1c38, #05070f 70%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.gate-card { max-width: 440px; width: 100%; text-align: center; }
+.gate-card h1 {
+  font-size: 42px;
+  margin: 0 0 4px;
+  letter-spacing: 2px;
+  background: linear-gradient(90deg, #2f81f7, #16c37d);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.gate-sub { color: var(--muted); margin: 0 0 18px; font-weight: 700; }
+.gate-desc { color: var(--text); font-size: 15px; line-height: 1.5; margin-bottom: 26px; }
+.gate .session-btn { position: static; margin: 0; }
+.gate-hint { color: var(--muted); font-size: 12px; margin-top: 16px; line-height: 1.4; }
+
+/* MapLibre : attribution discrète sur fond sombre */
+.maplibregl-ctrl-attrib { font-size: 10px; }
