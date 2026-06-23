@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b1020" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>REFUS-DOP — Suivi de poursuite</title>
+
+  <!-- Leaflet (carte) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="map"></div>
+
+  <!-- Bandeau principal : prochaine rue + direction -->
+  <header id="hud" class="hidden">
+    <div class="hud-row">
+      <div class="label">PROCHAINE RUE</div>
+      <div id="nextStreet" class="big">—</div>
+    </div>
+    <div class="hud-row">
+      <div class="label">DIRECTION</div>
+      <div id="direction" class="med">
+        <span id="directionArrow" class="arrow">↑</span>
+        <span id="directionName">—</span>
+      </div>
+    </div>
+    <div id="upcoming" class="upcoming"></div>
+  </header>
+
+  <!-- Barre du bas : données brutes -->
+  <footer id="stats" class="hidden">
+    <div class="stat"><span class="k">Vitesse</span><span id="speed" class="v">0</span><span class="u">km/h</span></div>
+    <div class="stat"><span class="k">Cap</span><span id="heading" class="v">—</span></div>
+    <div class="stat"><span class="k">Rue actuelle</span><span id="currentStreet" class="v small">—</span></div>
+    <div class="stat"><span class="k">Précision GPS</span><span id="accuracy" class="v">—</span><span class="u">m</span></div>
+  </footer>
+
+  <!-- Écran de démarrage -->
+  <div id="startOverlay">
+    <div class="start-card">
+      <h1>REFUS-DOP</h1>
+      <p class="sub">Assistant de poursuite — Chalon-sur-Saône</p>
+      <p class="desc">
+        Cette application te suit par GPS et indique en temps réel la
+        <strong>prochaine rue probable</strong> selon ta trajectoire, ainsi que
+        la <strong>direction</strong> (ville ou quartier vers lequel tu te diriges).
+      </p>
+      <button id="startBtn">▶ DÉMARRER LE SUIVI</button>
+      <p class="hint">Autorise la localisation quand le navigateur le demande. À utiliser comme passager ou sur support — jamais en conduisant.</p>
+      <p id="startError" class="err"></p>
+    </div>
+  </div>
+
+  <!-- Bouton recentrer -->
+  <button id="recenterBtn" class="float-btn hidden" title="Recentrer">⌖</button>
+
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    }
+  </script>
+</body>
+</html>

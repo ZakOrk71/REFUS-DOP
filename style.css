@@ -1,0 +1,194 @@
+:root {
+  --bg: #0b1020;
+  --panel: rgba(12, 18, 38, 0.92);
+  --accent: #2f81f7;
+  --accent-2: #18c37d;
+  --warn: #ff5a5a;
+  --text: #f4f7ff;
+  --muted: #9fb0d0;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: #0b1020;
+}
+
+.hidden { display: none !important; }
+
+/* ---- Bandeau principal (HUD) ---- */
+#hud {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 500;
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  padding: max(10px, env(safe-area-inset-top)) 14px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+}
+
+.hud-row { display: flex; align-items: baseline; gap: 12px; }
+.hud-row + .hud-row { margin-top: 4px; }
+
+.label {
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  font-weight: 700;
+  min-width: 120px;
+}
+
+.big {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--accent);
+  flex: 1;
+  word-break: break-word;
+}
+
+.med {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent-2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.arrow {
+  display: inline-block;
+  font-size: 26px;
+  transition: transform 0.3s ease;
+  color: var(--accent-2);
+}
+
+.upcoming {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.upcoming .chip {
+  font-size: 13px;
+  background: rgba(47,129,247,0.18);
+  border: 1px solid rgba(47,129,247,0.4);
+  color: #cfe0ff;
+  padding: 3px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+/* ---- Barre du bas (stats) ---- */
+#stats {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  z-index: 500;
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 10px 8px max(10px, env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255,255,255,0.08);
+  gap: 6px;
+}
+.stat { display: flex; flex-direction: column; align-items: center; line-height: 1.2; min-width: 0; flex: 1; }
+.stat .k { font-size: 10px; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; }
+.stat .v { font-size: 22px; font-weight: 800; }
+.stat .v.small { font-size: 13px; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat .u { font-size: 10px; color: var(--muted); }
+
+/* ---- Écran de démarrage ---- */
+#startOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1000;
+  background: radial-gradient(circle at 50% 30%, #142a52, #0b1020 70%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.start-card {
+  max-width: 420px;
+  width: 100%;
+  text-align: center;
+}
+.start-card h1 {
+  font-size: 40px;
+  margin: 0 0 4px;
+  letter-spacing: 2px;
+  background: linear-gradient(90deg, #2f81f7, #18c37d);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.start-card .sub { color: var(--muted); margin: 0 0 18px; font-weight: 600; }
+.start-card .desc { color: var(--text); font-size: 15px; line-height: 1.5; margin-bottom: 24px; }
+.start-card .hint { color: var(--muted); font-size: 12px; margin-top: 16px; line-height: 1.4; }
+.start-card .err { color: var(--warn); font-size: 14px; margin-top: 14px; font-weight: 600; }
+
+#startBtn {
+  width: 100%;
+  padding: 18px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: #fff;
+  background: linear-gradient(90deg, #2f81f7, #18c37d);
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(47,129,247,0.4);
+}
+#startBtn:active { transform: scale(0.98); }
+
+/* ---- Bouton flottant ---- */
+.float-btn {
+  position: absolute;
+  z-index: 500;
+  right: 14px;
+  bottom: 90px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: 26px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  cursor: pointer;
+}
+.float-btn:active { transform: scale(0.95); }
+
+/* Marqueur GPS personnalisé */
+.gps-dot {
+  width: 22px; height: 22px;
+  background: var(--accent);
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 6px rgba(47,129,247,0.25);
+}
+.gps-cone {
+  width: 0; height: 0;
+}
+
+.leaflet-container { background: #0b1020; }

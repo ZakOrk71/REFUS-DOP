@@ -1,1 +1,78 @@
-# REFUS-DOP
+# REFUS-DOP — Assistant de poursuite
+
+Web app mobile qui suit ta position **GPS en temps réel** et indique, pendant
+un refus d'obtempérer :
+
+- 🛣️ **La prochaine rue probable** selon ta trajectoire (cap + réseau routier réel OSM)
+- 🧭 **La direction** : la prochaine ville ou le prochain quartier vers lequel tu vas
+- 📍 Ta **rue actuelle**, ta **vitesse** et ton **cap**
+- 🗺️ Une **carte** centrée sur Chalon-sur-Saône avec ta trace
+
+Tout fonctionne **dans le navigateur du téléphone**, sans serveur ni clé API
+payante. Les seules requêtes réseau sont les fonds de carte
+(OpenStreetMap), le réseau routier (Overpass) et le géocodage de localité
+(Nominatim).
+
+## ⚠️ Usage
+
+À utiliser **comme passager** ou sur un support fixe — **jamais en conduisant**.
+La prédiction est une estimation basée sur ta direction et le tracé des rues :
+elle aide à anticiper, elle ne remplace pas ton jugement.
+
+## Comment ça marche
+
+1. L'app lit ta position via l'**API de géolocalisation** du navigateur
+   (`watchPosition`, haute précision).
+2. Elle calcule ton **cap** (depuis le GPS, ou depuis tes derniers déplacements).
+3. Elle télécharge le **réseau routier** autour de toi (Overpass / OpenStreetMap).
+4. Elle **projette ta trajectoire** vers l'avant et repère les rues croisées
+   situées devant toi → c'est la *prochaine rue probable* (+ les suivantes).
+5. Elle projette **plus loin** (proportionnel à ta vitesse) et géocode le point
+   pour donner la **ville/quartier** vers lequel tu te diriges.
+
+Les distances de projection s'**adaptent à la vitesse** : plus tu vas vite,
+plus l'app regarde loin devant.
+
+## Lancer l'app
+
+### Option A — GitHub Pages (recommandé, accessible depuis le téléphone)
+1. Sur GitHub : **Settings → Pages**.
+2. *Source* : branche `main` (ou ta branche), dossier `/ (root)`.
+3. Ouvre l'URL fournie (ex. `https://<user>.github.io/REFUS-DOP/`) sur ton téléphone.
+4. « Ajouter à l'écran d'accueil » pour l'installer comme une app (plein écran).
+
+> La géolocalisation **exige HTTPS**. GitHub Pages est en HTTPS, c'est parfait.
+
+### Option B — En local pour tester
+```bash
+# Python
+python3 -m http.server 8000
+# puis ouvrir http://localhost:8000 (localhost est autorisé pour le GPS)
+```
+Pour tester depuis le téléphone en local, il faut du HTTPS (ex. `ngrok`,
+`mkcert`) car le GPS est bloqué hors `localhost`/HTTPS.
+
+## Utilisation
+1. Ouvre l'app, appuie sur **▶ DÉMARRER LE SUIVI**.
+2. Autorise la **localisation** quand le navigateur le demande.
+3. La carte se centre sur toi et te suit. Le bandeau du haut affiche la
+   prochaine rue et la direction ; la barre du bas, tes données.
+4. Bouton ⌖ pour recentrer la carte si tu l'as déplacée.
+
+## Limites / pistes d'amélioration
+- La prédiction suit le **cap géométrique** : à une intersection complexe,
+  plusieurs rues peuvent être proposées (affichées en « → » sous la principale).
+- Overpass/Nominatim sont des services publics gratuits avec des limites de
+  débit ; l'app les interroge avec parcimonie (throttling). Pour un usage
+  intensif, on peut héberger sa propre instance Overpass ou utiliser une clé
+  de routage dédiée.
+- Évolutions possibles : suivi de la rue le long du graphe routier (au lieu
+  d'une simple projection), alertes vocales, mode nuit auto, enregistrement
+  des trajets.
+
+## Pile technique
+- HTML / CSS / JavaScript (aucun build)
+- [Leaflet](https://leafletjs.com/) + OpenStreetMap (carte)
+- [Overpass API](https://overpass-api.de/) (réseau routier)
+- [Nominatim](https://nominatim.org/) (géocodage de localité)
+- PWA (manifest + service worker) pour l'installation sur mobile

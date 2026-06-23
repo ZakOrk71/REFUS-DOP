@@ -1,0 +1,24 @@
+{
+  "name": "REFUS-DOP — Assistant de poursuite",
+  "short_name": "REFUS-DOP",
+  "description": "Suivi GPS temps réel avec prédiction de la prochaine rue et de la direction.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='36' fill='%230b1020'/%3E%3Cpath d='M96 28l52 120-52-30-52 30z' fill='%232f81f7'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230b1020'/%3E%3Cpath d='M256 75l139 320-139-80-139 80z' fill='%232f81f7'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
