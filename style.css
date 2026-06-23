@@ -84,6 +84,13 @@ html, body {
 
 .line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
+.sub {
+  margin-top: 2px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 .big {
   font-size: 27px;
   font-weight: 800;

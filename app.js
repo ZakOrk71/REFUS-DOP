@@ -68,13 +68,13 @@ let lastPos = null, lastTime = null;
 let smoothedHeading = null, gpsHeading = null, smoothedSpeed = 0;
 let compassHeading = null, lastCompassAt = 0;
 let firstFix = false;
-let lastGeocodeAt = 0, lastOverpassAt = 0, lastOverpassCenter = null;
+let lastOverpassAt = 0, lastOverpassCenter = null;
 let lastPlacesAt = 0, lastPlacesCenter = null;
 let roads = [], places = [];
 let watchId = null, wakeLock = null, followMode = true;
 const anim = { from: null, to: null, start: 0, dur: 1000, render: CHALON };
 const dbg = { fixes: 0, dt: 0, lat: 0, lon: 0, acc: 0, vgps: null, vcalc: 0,
-              hgps: null, overpass: '—', places: '—', nominatim: '—' };
+              hgps: null, overpass: '—', places: '—' };
 let debugOn = false;
 
 function currentHeading() {
@@ -261,8 +261,8 @@ précision : ${dbg.acc ? Math.round(dbg.acc) + ' m' : '—'}
 vitesse  gps:${dbg.vgps !== null ? (dbg.vgps*3.6).toFixed(1) : '—'}  calc:${(dbg.vcalc*3.6).toFixed(1)} km/h
 cap      gps:${dbg.hgps !== null ? Math.round(dbg.hgps)+'°' : '—'}  bouss:${compassHeading !== null ? Math.round(compassHeading)+'°' : '—'}
 cap utilisé : ${hdg !== null ? Math.round(hdg)+'° ('+src+')' : '—'}
-routes:${roads.length}  villes:${places.length}
-overpass:${dbg.overpass}  villes:${dbg.places}  nomin.:${dbg.nominatim}`;
+routes:${roads.length}  villes:${places.length}  quartiers:${typeof QUARTIERS!=='undefined'?QUARTIERS.length:0}
+overpass:${dbg.overpass}  villes:${dbg.places}`;
   }
 }
 
@@ -300,12 +300,21 @@ async function updatePredictions(here) {
     if (!map.hasLayer(nextMarker)) nextMarker.addTo(map);
   }
 
-  // 2) DIRECTION = grand axe vers lequel on va (avenue / boulevard / voie majeure)
+  // 2) DIRECTION = quartier vers lequel on va (sinon grand axe : avenue/boulevard)
   const axisCands = roadsAhead(here, hdg, axisAhead, 45);
   const axis = pickMajorAxis(axisCands);
-  if (axis) {
-    document.getElementById('directionName').textContent = axis.name;
-    document.getElementById('directionMeta').textContent = fmtDist(axis.dist);
+  const quartier = pickQuartier(here, hdg, spd);
+  const dName = document.getElementById('directionName');
+  const dAxis = document.getElementById('directionAxis');
+  const dMeta = document.getElementById('directionMeta');
+  if (quartier) {
+    dName.textContent = quartier.name;
+    dMeta.textContent = fmtDist(quartier.dist);
+    dAxis.textContent = axis ? `par ${axis.name}` : '';
+  } else if (axis) {
+    dName.textContent = axis.name;
+    dMeta.textContent = fmtDist(axis.dist);
+    dAxis.textContent = '';
   }
 
   // 3) VERS = prochaine ville selon cap + vitesse (recalcul à chaque cycle, cache local)
@@ -317,17 +326,6 @@ async function updatePredictions(here) {
     tArrow.dataset.brng = town.brng;
     townMarker.setLatLng(town.point);
     if (!map.hasLayer(townMarker)) townMarker.addTo(map);
-  }
-
-  // 4) Quartier connu en complément (Nominatim), peu fréquent
-  if (Date.now() - lastGeocodeAt > 8000) {
-    lastGeocodeAt = Date.now();
-    const probe = destination(here, hdg, Math.max(500, axisAhead * 0.6));
-    reverseQuarter(probe).then(q => {
-      const el = document.getElementById('quarter');
-      el.textContent = q ? q : '';
-      el.style.display = q ? 'inline-block' : 'none';
-    }).catch(() => {});
   }
 
   const cur = nearestRoad(here);
@@ -377,6 +375,23 @@ function nearestRoad(here) {
       if (!best || seg.dist < best.dist) best = { name: road.name, dist: seg.dist };
     }
   return best && best.dist < 60 ? best : null;
+}
+
+/* Quartier vers lequel on se dirige (liste OSM intégrée, grands quartiers prioritaires) */
+function pickQuartier(here, hdg, spd) {
+  if (typeof QUARTIERS === 'undefined' || !QUARTIERS.length) return null;
+  const reach = Math.max(900, Math.min(3500, spd * 60 + 700)); // portée selon vitesse
+  let best = null;
+  for (const q of QUARTIERS) {
+    const pt = [q.y, q.x];
+    const dist = haversine(here, pt);
+    if (dist < 40 || dist > reach) continue;
+    const off = Math.abs(angleDiff(hdg, bearing(here, pt)));
+    if (off > 60) continue;
+    const score = q.w * 2 - off * 0.03 - (dist / reach) * 1.6;
+    if (!best || score > best.score) best = { name: q.name || q.n, dist, score };
+  }
+  return best;
 }
 
 /* Prochaine ville selon le cap et la vitesse */
@@ -434,18 +449,6 @@ async function overpass(q) {
     } catch (e) {}
   }
   return null;
-}
-
-/* ---------- Nominatim : quartier connu (complément) ---------- */
-async function reverseQuarter(point) {
-  try {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${point[0]}&lon=${point[1]}&zoom=14&accept-language=fr`;
-    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-    if (!res.ok) { dbg.nominatim = 'erreur'; return null; }
-    dbg.nominatim = 'ok';
-    const a = (await res.json()).address || {};
-    return a.suburb || a.neighbourhood || a.quarter || a.city_district || null;
-  } catch (e) { dbg.nominatim = 'erreur'; return null; }
 }
 
 /* ---------- Wake Lock ---------- */

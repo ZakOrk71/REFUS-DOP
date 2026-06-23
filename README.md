@@ -75,6 +75,21 @@ Pour tester depuis le téléphone en local, il faut du HTTPS (ex. `ngrok`,
   d'une simple projection), alertes vocales, mode nuit auto, enregistrement
   des trajets.
 
+## Données des quartiers
+
+Les noms de quartiers proviennent d'OpenStreetMap et sont **intégrés en dur**
+dans `quartiers.js` (101 quartiers de Chalon-sur-Saône et ses alentours, avec
+coordonnées réelles). Ça garantit des noms précis et connus (Prés Saint-Jean /
+ZUP, Les Aubépins, Saint-Cosme, Le Stade, Bellevue, Plateau Saint-Jean,
+Boucicaut, Citadelle, Île Saint-Laurent…), même hors-ligne. Les grands
+quartiers sont priorisés (`w:3`) sur les lotissements/zones (`w:1`).
+
+Pour régénérer/étendre la liste depuis OSM :
+```bash
+curl -s -A 'REFUS-DOP/1.0' -G 'https://overpass-api.de/api/interpreter' \
+  --data-urlencode 'data=[out:json];node(around:13000,46.7806,4.8537)[place~"^(suburb|quarter|neighbourhood)$"][name];out;'
+```
+
 ## Pile technique
 - HTML / CSS / JavaScript (aucun build)
 - [Leaflet](https://leafletjs.com/) + OpenStreetMap (carte)

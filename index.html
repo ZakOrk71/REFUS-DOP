@@ -33,11 +33,11 @@
     <div class="card axis">
       <div class="ic"><span id="directionArrow" class="arrow">↑</span></div>
       <div class="body">
-        <div class="label">DIRECTION (grand axe)</div>
+        <div class="label">DIRECTION (quartier)</div>
         <div class="line">
           <span id="directionName" class="med">—</span>
-          <span id="quarter" class="quarter" style="display:none"></span>
         </div>
+        <div id="directionAxis" class="sub"></div>
       </div>
       <div id="directionMeta" class="dist"></div>
     </div>
@@ -86,6 +86,7 @@
   <button id="recenterBtn" class="float-btn hidden" title="Recentrer">⌖</button>
   <button id="debugBtn" class="float-btn small hidden" title="Débogage">🐞</button>
 
+  <script src="quartiers.js"></script>
   <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
