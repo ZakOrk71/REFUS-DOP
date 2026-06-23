@@ -294,17 +294,28 @@ async function updatePredictions(here) {
     if (pathStreets.length) {
       const s0 = pathStreets[0];
       const t = turnLabel(s0.turn);
+      const turnEl = document.getElementById('nextTurn');
       document.getElementById('nextStreet').textContent = s0.name;
-      document.getElementById('nextTurn').textContent = `${t.icon} ${t.txt}`;
+      turnEl.textContent = s0.contresens ? `⚠ ${t.txt} (à contresens)` : `${t.icon} ${t.txt}`;
+      turnEl.classList.toggle('contresens', !!s0.contresens);
       document.getElementById('nextDist').textContent = fmtDist(s0.dist);
       const chips = [];
-      if (path.fork) chips.push(`<span class="chip fork">ou ${turnLabel(path.fork.turn).icon} ${path.fork.name}</span>`);
-      for (const s of pathStreets.slice(1, 4)) chips.push(`<span class="chip">${turnLabel(s.turn).icon} ${s.name}</span>`);
+      if (path.fork) {
+        const ft = turnLabel(path.fork.turn);
+        const cls = path.fork.contresens ? 'chip fork contresens' : 'chip fork';
+        const pre = path.fork.contresens ? `⚠ ou ${path.fork.name} à contresens` : `ou ${ft.icon} ${path.fork.name}`;
+        chips.push(`<span class="${cls}">${pre}</span>`);
+      }
+      for (const s of pathStreets.slice(1, 4)) {
+        const st = turnLabel(s.turn);
+        chips.push(`<span class="chip${s.contresens ? ' contresens' : ''}">${s.contresens ? '⚠ ' : st.icon + ' '}${s.name}</span>`);
+      }
       document.getElementById('upcoming').innerHTML = chips.join('');
       nextMarker.setLatLng(s0.point);
       if (!map.hasLayer(nextMarker)) nextMarker.addTo(map);
     } else {
       document.getElementById('nextTurn').textContent = '↑ tout droit';
+      document.getElementById('nextTurn').classList.remove('contresens');
     }
   }
 
@@ -348,15 +359,16 @@ const nodeKey = p => p[0].toFixed(6) + ',' + p[1].toFixed(6);
 /* Construit le graphe : chaque nœud OSM -> arêtes vers ses voisins */
 function buildGraph() {
   graph = new Map();
-  const add = (a, b, name, cls) => {
+  const add = (a, b, name, cls, legal) => {
     const ka = nodeKey(a);
     if (!graph.has(ka)) graph.set(ka, { p: a, e: [] });
-    graph.get(ka).e.push({ to: nodeKey(b), p: b, name, cls, brng: bearing(a, b) });
+    graph.get(ka).e.push({ to: nodeKey(b), p: b, name, cls, legal, brng: bearing(a, b) });
   };
   for (const road of roads)
     for (let i = 0; i < road.geom.length - 1; i++) {
-      add(road.geom[i], road.geom[i + 1], road.name, road.cls);
-      add(road.geom[i + 1], road.geom[i], road.name, road.cls);
+      // legal = circulation autorisée dans ce sens (faux = à contresens d'un sens unique)
+      add(road.geom[i], road.geom[i + 1], road.name, road.cls, road.dir !== -1);
+      add(road.geom[i + 1], road.geom[i], road.name, road.cls, road.dir !== 1);
     }
 }
 
@@ -404,7 +416,7 @@ function predictPath(here, hdg, maxDist) {
   for (let steps = 0; steps < 120 && traveled < maxDist; steps++) {
     const node = graph.get(curKey);
     if (!node) break;
-    let best = null, second = null;
+    let bestLegal = null, secondLegal = null, bestAny = null;
     for (const e of node.e) {
       if (e.to === prevKey && e.name === curName) continue; // pas de demi-tour sur la même voie
       const turn = angleDiff(curBrng, e.brng);
@@ -413,19 +425,33 @@ function predictPath(here, hdg, maxDist) {
                     + (e.name === curName ? 60 : 0)          // continuité de la même rue
                     + (roadScore(e.cls, e.name)) * 5;        // gros axes plus probables
       const cand = { e, turn, score };
-      if (!best || score > best.score) { second = best; best = cand; }
-      else if (!second || score > second.score) second = cand;
+      if (!bestAny || score > bestAny.score) bestAny = cand;
+      if (e.legal) {
+        if (!bestLegal || score > bestLegal.score) { secondLegal = bestLegal; bestLegal = cand; }
+        else if (!secondLegal || score > secondLegal.score) secondLegal = cand;
+      }
     }
-    if (!best) break;                                        // cul-de-sac
-    const e = best.e;
+    if (!bestAny) break;                                     // cul-de-sac
+    const chosen = bestLegal || bestAny;                    // légal en priorité, sinon contresens forcé
+    const e = chosen.e;
+    const contresens = !e.legal;
 
     // Changement de rue = une « prochaine rue » de l'itinéraire
     if (e.name && e.name !== lastName) {
-      streets.push({ name: e.name, cls: e.cls, point: node.p, dist: traveled, turn: best.turn });
-      // À une intersection ambiguë (virage marqué + alternative comparable), on note la bifurcation
-      if (streets.length === 1 && second && Math.abs(best.turn) > 35 &&
-          best.score - second.score < 25 && second.e.name && second.e.name !== lastName) {
-        fork = { name: second.e.name, turn: second.turn };
+      const prevLast = lastName;
+      streets.push({ name: e.name, cls: e.cls, point: node.p, dist: traveled, turn: chosen.turn, contresens });
+      if (streets.length === 1) {
+        // (a) raccourci à contresens nettement plus droit : un fuyard peut forcer le sens interdit
+        if (bestLegal && bestAny !== bestLegal && !bestAny.e.legal &&
+            Math.abs(bestAny.turn) + 15 < Math.abs(bestLegal.turn) &&
+            bestAny.e.name && bestAny.e.name !== prevLast) {
+          fork = { name: bestAny.e.name, turn: bestAny.turn, contresens: true };
+        }
+        // (b) sinon bifurcation légale en T : 2e option comparable avec virage marqué
+        else if (secondLegal && Math.abs(chosen.turn) > 35 && chosen.score - secondLegal.score < 25 &&
+                 secondLegal.e.name && secondLegal.e.name !== prevLast) {
+          fork = { name: secondLegal.e.name, turn: secondLegal.turn, contresens: !secondLegal.e.legal };
+        }
       }
       lastName = e.name;
     }
@@ -502,9 +528,16 @@ async function fetchRoads(center) {
   const data = await overpass(q);
   if (!data) { dbg.overpass = 'erreur'; return; }
   roads = (data.elements || []).filter(e => e.geometry && e.tags && e.tags.name)
-    .map(e => ({ name: e.tags.name, cls: e.tags.highway, geom: e.geometry.map(g => [g.lat, g.lon]) }));
+    .map(e => {
+      const t = e.tags;
+      // Sens de circulation autorisé : 1 = sens du tracé, -1 = inverse, 0 = double sens
+      let dir = 0;
+      if (t.junction === 'roundabout' || t.oneway === 'yes' || t.oneway === 'true' || t.oneway === '1') dir = 1;
+      else if (t.oneway === '-1' || t.oneway === 'reverse') dir = -1;
+      return { name: t.name, cls: t.highway, dir, geom: e.geometry.map(g => [g.lat, g.lon]) };
+    });
   buildGraph();
-  dbg.overpass = `ok (${roads.length})`;
+  dbg.overpass = `ok (${roads.length}, ${roads.filter(r => r.dir).length} sens unique)`;
 }
 
 /* ---------- Overpass : villes / villages ---------- */

@@ -8,6 +8,9 @@ un refus d'obtempérer :
   prioritaire, plus gros axe, sans demi-tour). Elle indique **tout droit / à gauche / à droite**,
   la distance, et signale les **bifurcations** (en T : « à gauche ou à droite »).
   Elle ne nomme donc plus une rue perpendiculaire qu'on ne peut pas traverser tout droit.
+- ⚠️ **Sens uniques pris en compte (mode hybride)** : la prédiction privilégie les trajets **légaux**
+  (sens uniques `oneway`, ronds-points), mais comme un fuyard force souvent, elle **signale le
+  contresens** « ⚠ à contresens » quand c'est la continuation logique (sens interdit pris à l'envers).
 - ➡️ **La direction (grand axe)** : l'avenue / le boulevard / la voie majeure vers laquelle tu vas,
   choisie par importance réelle de la voie (les noms qu'on utilise vraiment en intervention),
   + le quartier connu en complément s'il existe

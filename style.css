@@ -145,6 +145,12 @@ html, body {
   border-color: rgba(245,166,35,0.5);
   color: #ffd9a0;
 }
+.turn.contresens { color: #ff6a6a; }
+.upcoming .chip.contresens {
+  background: rgba(255,90,90,0.16);
+  border-color: rgba(255,90,90,0.55);
+  color: #ff9a9a;
+}
 .upcoming .chip {
   font-size: 12px;
   background: rgba(47,129,247,0.18);
