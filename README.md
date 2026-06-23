@@ -3,10 +3,15 @@
 Web app mobile qui suit ta position **GPS en temps réel** et indique, pendant
 un refus d'obtempérer :
 
-- 🛣️ **La prochaine rue probable** selon ta trajectoire (cap + réseau routier réel OSM)
-- 🧭 **La direction** : la prochaine ville ou le prochain quartier vers lequel tu vas
-- 📍 Ta **rue actuelle**, ta **vitesse** et ton **cap**
-- 🗺️ Une **carte** centrée sur Chalon-sur-Saône avec ta trace
+- 🛣️ **La prochaine rue probable** selon ta trajectoire (cap + réseau routier réel OSM), avec distance
+- ➡️ **La direction (grand axe)** : l'avenue / le boulevard / la voie majeure vers laquelle tu vas,
+  choisie par importance réelle de la voie (les noms qu'on utilise vraiment en intervention),
+  + le quartier connu en complément s'il existe
+- 🏁 **La prochaine ville** (façon panneau routier) calculée selon **ton cap et ta vitesse** :
+  plus tu vas vite, plus la cible visée est loin (autoroute → ville lointaine ; en ville → localité proche)
+- 📍 Ta **rue actuelle**, ta **vitesse** et ton **cap** (boussole de l'iPhone)
+- 🗺️ Une **carte fluide** (interpolation 60 fps) avec ta trace et le rayon de trajectoire
+- 🐞 Un **panneau de débogage** (fixes GPS, précision, vitesses, caps, état des services)
 
 Tout fonctionne **dans le navigateur du téléphone**, sans serveur ni clé API
 payante. Les seules requêtes réseau sont les fonds de carte

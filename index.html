@@ -18,20 +18,41 @@
 <body>
   <div id="map"></div>
 
-  <!-- Bandeau principal : prochaine rue + direction -->
+  <!-- Bandeau principal -->
   <header id="hud" class="hidden">
-    <div class="hud-row">
-      <div class="label">PROCHAINE RUE</div>
-      <div id="nextStreet" class="big">—</div>
-    </div>
-    <div class="hud-row">
-      <div class="label">DIRECTION</div>
-      <div id="direction" class="med">
-        <span id="directionArrow" class="arrow">↑</span>
-        <span id="directionName">—</span>
+    <div class="card street">
+      <div class="ic">🛣️</div>
+      <div class="body">
+        <div class="label">PROCHAINE RUE</div>
+        <div id="nextStreet" class="big">—</div>
+        <div id="upcoming" class="upcoming"></div>
       </div>
+      <div id="nextDist" class="dist"></div>
     </div>
-    <div id="upcoming" class="upcoming"></div>
+
+    <div class="card axis">
+      <div class="ic"><span id="directionArrow" class="arrow">↑</span></div>
+      <div class="body">
+        <div class="label">DIRECTION (grand axe)</div>
+        <div class="line">
+          <span id="directionName" class="med">—</span>
+          <span id="quarter" class="quarter" style="display:none"></span>
+        </div>
+      </div>
+      <div id="directionMeta" class="dist"></div>
+    </div>
+
+    <div class="card town">
+      <div class="ic">🏁</div>
+      <div class="body">
+        <div class="label">VERS (prochaine ville)</div>
+        <div class="line">
+          <span id="townArrow" class="arrow town-arrow">↑</span>
+          <span id="townName" class="med">—</span>
+        </div>
+      </div>
+      <div id="townDist" class="dist"></div>
+    </div>
   </header>
 
   <!-- Barre du bas : données brutes -->

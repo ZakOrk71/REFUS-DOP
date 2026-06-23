@@ -2,8 +2,8 @@
 
 /* =======================================================================
    REFUS-DOP — Assistant de poursuite
-   Suivi GPS temps réel (boussole + interpolation fluide) + prédiction
-   de la prochaine rue et de la direction. 100% navigateur.
+   Suivi GPS temps réel (boussole + interpolation) + prédiction de la
+   prochaine rue, du grand axe (direction) et de la prochaine ville.
    ======================================================================= */
 
 const CHALON = [46.7806, 4.8537];
@@ -12,17 +12,14 @@ const R = 6371000;
 /* ---------- Outils géo ---------- */
 const toRad = d => d * Math.PI / 180;
 const toDeg = r => r * 180 / Math.PI;
-
 function haversine(a, b) {
-  const dLat = toRad(b[0] - a[0]);
-  const dLon = toRad(b[1] - a[1]);
+  const dLat = toRad(b[0] - a[0]), dLon = toRad(b[1] - a[1]);
   const lat1 = toRad(a[0]), lat2 = toRad(b[0]);
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 function bearing(a, b) {
-  const lat1 = toRad(a[0]), lat2 = toRad(b[0]);
-  const dLon = toRad(b[1] - a[1]);
+  const lat1 = toRad(a[0]), lat2 = toRad(b[0]), dLon = toRad(b[1] - a[1]);
   const y = Math.sin(dLon) * Math.cos(lat2);
   const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
@@ -36,39 +33,50 @@ function destination(point, brng, dist) {
 }
 function angleDiff(a, b) { return ((b - a + 540) % 360) - 180; }
 function cardinal(deg) {
-  return ['Nord','Nord-Est','Est','Sud-Est','Sud','Sud-Ouest','Ouest','Nord-Ouest'][Math.round(deg / 45) % 8];
+  return ['N','NE','E','SE','S','SO','O','NO'][Math.round(deg / 45) % 8];
+}
+function fmtDist(m) {
+  if (m == null) return '';
+  return m < 950 ? `${Math.round(m / 10) * 10} m` : `${(m / 1000).toFixed(1)} km`;
 }
 function pointToSegment(p, a, b) {
-  const mPerLat = 111320, mPerLon = 111320 * Math.cos(toRad(p[0]));
-  const ax = (a[1] - p[1]) * mPerLon, ay = (a[0] - p[0]) * mPerLat;
-  const bx = (b[1] - p[1]) * mPerLon, by = (b[0] - p[0]) * mPerLat;
+  const mLat = 111320, mLon = 111320 * Math.cos(toRad(p[0]));
+  const ax = (a[1] - p[1]) * mLon, ay = (a[0] - p[0]) * mLat;
+  const bx = (b[1] - p[1]) * mLon, by = (b[0] - p[0]) * mLat;
   const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
   let t = len2 === 0 ? 0 : (-ax * dx - ay * dy) / len2;
   t = Math.max(0, Math.min(1, t));
   const cx = ax + t * dx, cy = ay + t * dy;
-  return { dist: Math.hypot(cx, cy), point: [p[0] + cy / mPerLat, p[1] + cx / mPerLon] };
+  return { dist: Math.hypot(cx, cy), point: [p[0] + cy / mLat, p[1] + cx / mLon] };
 }
 
+/* Importance d'une voie (pour choisir le « grand axe ») */
+const CLASS_RANK = {
+  motorway: 7, trunk: 6, primary: 5, secondary: 4, tertiary: 3,
+  motorway_link: 6, trunk_link: 5, primary_link: 4, secondary_link: 3,
+  unclassified: 2, residential: 1, living_street: 1,
+};
+function nameBonus(name) {
+  return /(avenue|boulevard|^cours |^cours$| cours |quai|route|rocade|p[eé]riph|voie|pont)/i.test(name) ? 2 : 0;
+}
+function roadScore(cls, name) { return (CLASS_RANK[cls] || 1) + nameBonus(name); }
+
 /* ---------- État ---------- */
-let map, gpsMarker, accCircle, trailLine, nextMarker, dirMarker;
+let map, gpsMarker, accCircle, trailLine, nextMarker, townMarker, headingRay;
 const trail = [];
 let lastPos = null, lastTime = null;
 let smoothedHeading = null, gpsHeading = null, smoothedSpeed = 0;
 let compassHeading = null, lastCompassAt = 0;
 let firstFix = false;
 let lastGeocodeAt = 0, lastOverpassAt = 0, lastOverpassCenter = null;
-let roads = [];
+let lastPlacesAt = 0, lastPlacesCenter = null;
+let roads = [], places = [];
 let watchId = null, wakeLock = null, followMode = true;
-
-// Animation (interpolation fluide entre deux points GPS)
 const anim = { from: null, to: null, start: 0, dur: 1000, render: CHALON };
-
-// Débogage
 const dbg = { fixes: 0, dt: 0, lat: 0, lon: 0, acc: 0, vgps: null, vcalc: 0,
-              hgps: null, overpass: '—', nominatim: '—' };
+              hgps: null, overpass: '—', places: '—', nominatim: '—' };
 let debugOn = false;
 
-/* ---------- Cap courant : boussole prioritaire, sinon GPS ---------- */
 function currentHeading() {
   if (compassHeading !== null && Date.now() - lastCompassAt < 3000) return compassHeading;
   return smoothedHeading;
@@ -87,7 +95,7 @@ function start() {
   if (!('geolocation' in navigator)) { errEl.textContent = "Géolocalisation non supportée."; return; }
   initMap();
   requestWakeLock();
-  enableCompass();          // demande l'autorisation boussole (geste utilisateur)
+  enableCompass();
   beginWatch();
   requestAnimationFrame(renderLoop);
   setInterval(updateReadouts, 200);
@@ -112,14 +120,15 @@ function initMap() {
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
     maxZoom: 20, attribution: '© OpenStreetMap © CARTO',
   }).addTo(map);
-  trailLine = L.polyline([], { color: '#2f81f7', weight: 5, opacity: 0.6 }).addTo(map);
+  headingRay = L.polyline([], { color: '#18c37d', weight: 4, opacity: 0.8, dashArray: '2 9', lineCap: 'round' }).addTo(map);
+  trailLine = L.polyline([], { color: '#2f81f7', weight: 5, opacity: 0.55 }).addTo(map);
   accCircle = L.circle(CHALON, { radius: 0, color: '#2f81f7', weight: 1, fillColor: '#2f81f7', fillOpacity: 0.12 });
   const icon = L.divIcon({ className: '',
     html: '<div class="gps-wrap"><div class="gps-cone"></div><div class="gps-dot"></div></div>',
     iconSize: [40, 40], iconAnchor: [20, 20] });
   gpsMarker = L.marker(CHALON, { icon, interactive: false, keyboard: false });
   nextMarker = L.circleMarker(CHALON, { radius: 7, color: '#fff', weight: 2, fillColor: '#2f81f7', fillOpacity: 1 });
-  dirMarker  = L.circleMarker(CHALON, { radius: 7, color: '#fff', weight: 2, fillColor: '#18c37d', fillOpacity: 1 });
+  townMarker = L.circleMarker(CHALON, { radius: 8, color: '#fff', weight: 2, fillColor: '#18c37d', fillOpacity: 1 });
   map.on('dragstart', () => { followMode = false; document.getElementById('recenterBtn').classList.add('active'); });
   document.getElementById('recenterBtn').addEventListener('click', () => {
     followMode = true;
@@ -128,47 +137,49 @@ function initMap() {
   });
 }
 
-/* ---------- Boussole (iOS : webkitCompassHeading) ---------- */
+/* ---------- Boussole ---------- */
 function enableCompass() {
   const handler = e => {
     let h = null;
-    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
-      h = e.webkitCompassHeading;                 // iOS : déjà un cap (0 = Nord, sens horaire)
-    } else if (e.absolute && typeof e.alpha === 'number') {
-      h = (360 - e.alpha) % 360;                  // Android absolu
+    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) h = e.webkitCompassHeading;
+    else if (e.absolute && typeof e.alpha === 'number') h = (360 - e.alpha) % 360;
+    if (h !== null) {
+      compassHeading = (compassHeading === null) ? h : (compassHeading + angleDiff(compassHeading, h) * 0.25 + 360) % 360;
+      lastCompassAt = Date.now();
     }
-    if (h !== null) { compassHeading = h; lastCompassAt = Date.now(); }
   };
   const attach = () => {
     window.addEventListener('deviceorientation', handler, true);
     window.addEventListener('deviceorientationabsolute', handler, true);
   };
   const DOE = window.DeviceOrientationEvent;
-  if (DOE && typeof DOE.requestPermission === 'function') {
-    DOE.requestPermission().then(state => { if (state === 'granted') attach(); }).catch(() => {});
-  } else {
-    attach();
-  }
+  if (DOE && typeof DOE.requestPermission === 'function')
+    DOE.requestPermission().then(s => { if (s === 'granted') attach(); }).catch(() => {});
+  else attach();
 }
 
-/* ---------- Boucle d'animation (fluidité temps réel) ---------- */
+/* ---------- Animation fluide ---------- */
 function renderLoop() {
   requestAnimationFrame(renderLoop);
   if (!anim.to) return;
   const t = Math.min(1, (performance.now() - anim.start) / anim.dur);
-  const e = t * (2 - t); // ease-out
+  const e = t * (2 - t);
   const lat = anim.from[0] + (anim.to[0] - anim.from[0]) * e;
   const lon = anim.from[1] + (anim.to[1] - anim.from[1]) * e;
   anim.render = [lat, lon];
   gpsMarker.setLatLng(anim.render);
   accCircle.setLatLng(anim.render);
   if (followMode && map) map.panTo(anim.render, { animate: false });
-
   const hdg = currentHeading();
   const wrap = gpsMarker.getElement() && gpsMarker.getElement().querySelector('.gps-wrap');
   if (wrap) {
     if (hdg !== null) { wrap.style.transform = `rotate(${hdg}deg)`; wrap.classList.add('moving'); }
     else wrap.classList.remove('moving');
+  }
+  // Rayon de trajectoire (depuis la position rendue, vers le cap)
+  if (hdg !== null) {
+    const len = Math.max(120, Math.min(900, smoothedSpeed * 10));
+    headingRay.setLatLngs([anim.render, destination(anim.render, hdg, len)]);
   }
 }
 
@@ -199,8 +210,6 @@ function onPosition(pos) {
     anim.render = here;
     setStatus('Avance pour calculer la trajectoire…');
   }
-
-  // Cible d'animation : on interpole de la position rendue vers le nouveau point
   anim.from = anim.render || here;
   anim.to = here;
   anim.start = performance.now();
@@ -210,10 +219,8 @@ function onPosition(pos) {
   trail.push(here);
   if (trail.length > 500) trail.shift();
   trailLine.setLatLngs(trail);
-
   lastPos = here; lastTime = now;
 
-  // Débogage
   dbg.fixes++; dbg.dt = Math.round(dt * 1000); dbg.lat = latitude; dbg.lon = longitude;
   dbg.acc = accuracy; dbg.vgps = (typeof speed === 'number' && speed >= 0) ? speed : null;
   dbg.vcalc = vcalc; dbg.hgps = gpsHeading;
@@ -234,7 +241,7 @@ function onGeoError(err) {
   if (err.code === 3) beginWatch();
 }
 
-/* ---------- Affichage textuel (200 ms) ---------- */
+/* ---------- Affichage textuel ---------- */
 function updateReadouts() {
   const hdg = currentHeading();
   document.getElementById('speed').textContent = Math.round(smoothedSpeed * 3.6);
@@ -242,6 +249,8 @@ function updateReadouts() {
   document.getElementById('heading').textContent = hdg !== null ? `${cardinal(hdg)} ${Math.round(hdg)}°` : '—';
   const arrow = document.getElementById('directionArrow');
   if (hdg !== null) arrow.style.transform = `rotate(${hdg}deg)`;
+  const tArrow = document.getElementById('townArrow');
+  if (tArrow && tArrow.dataset.brng) tArrow.style.transform = `rotate(${(+tArrow.dataset.brng) - hdg}deg)`;
 
   if (debugOn) {
     const src = (compassHeading !== null && Date.now() - lastCompassAt < 3000) ? 'boussole' : 'gps';
@@ -250,10 +259,10 @@ function updateReadouts() {
 lat ${dbg.lat.toFixed(6)}  lon ${dbg.lon.toFixed(6)}
 précision : ${dbg.acc ? Math.round(dbg.acc) + ' m' : '—'}
 vitesse  gps:${dbg.vgps !== null ? (dbg.vgps*3.6).toFixed(1) : '—'}  calc:${(dbg.vcalc*3.6).toFixed(1)} km/h
-cap      gps:${dbg.hgps !== null ? Math.round(dbg.hgps)+'°' : '—'}  boussole:${compassHeading !== null ? Math.round(compassHeading)+'°' : '—'}
+cap      gps:${dbg.hgps !== null ? Math.round(dbg.hgps)+'°' : '—'}  bouss:${compassHeading !== null ? Math.round(compassHeading)+'°' : '—'}
 cap utilisé : ${hdg !== null ? Math.round(hdg)+'° ('+src+')' : '—'}
-routes en cache : ${roads.length}
-overpass : ${dbg.overpass}   nominatim : ${dbg.nominatim}`;
+routes:${roads.length}  villes:${places.length}
+overpass:${dbg.overpass}  villes:${dbg.places}  nomin.:${dbg.nominatim}`;
   }
 }
 
@@ -263,57 +272,101 @@ async function updatePredictions(here) {
   if (hdg === null) return;
   const spd = smoothedSpeed;
   const streetAhead = Math.max(80, Math.min(600, spd * 8));
-  const cityAhead = Math.max(1200, Math.min(6000, spd * 70));
+  const axisAhead = Math.max(400, Math.min(2500, spd * 30));
 
+  // Réseau routier (Overpass) rafraîchi quand on a bougé de 250 m
   if (!lastOverpassCenter || haversine(lastOverpassCenter, here) > 250) {
     if (Date.now() - lastOverpassAt > 4000) {
       lastOverpassAt = Date.now(); lastOverpassCenter = here;
       fetchRoads(here).catch(() => {});
     }
   }
-
-  const upcoming = predictStreetsFromRoads(here, hdg, streetAhead);
-  if (upcoming.length) {
-    document.getElementById('nextStreet').textContent = upcoming[0].name;
-    document.getElementById('upcoming').innerHTML =
-      upcoming.slice(1, 4).map(s => `<span class="chip">→ ${s.name}</span>`).join('');
-    if (upcoming[0].point) { nextMarker.setLatLng(upcoming[0].point); if (!map.hasLayer(nextMarker)) nextMarker.addTo(map); }
+  // Villes alentour rafraîchies quand on a bougé de 3 km
+  if (!lastPlacesCenter || haversine(lastPlacesCenter, here) > 3000) {
+    if (Date.now() - lastPlacesAt > 8000) {
+      lastPlacesAt = Date.now(); lastPlacesCenter = here;
+      fetchPlaces(here).catch(() => {});
+    }
   }
 
-  if (Date.now() - lastGeocodeAt > 4000) {
+  // 1) Prochaine rue
+  const streetsNear = roadsAhead(here, hdg, streetAhead, 30);
+  if (streetsNear.length) {
+    document.getElementById('nextStreet').textContent = streetsNear[0].name;
+    document.getElementById('nextDist').textContent = fmtDist(streetsNear[0].dist);
+    document.getElementById('upcoming').innerHTML =
+      streetsNear.slice(1, 4).map(s => `<span class="chip">→ ${s.name}</span>`).join('');
+    nextMarker.setLatLng(streetsNear[0].point);
+    if (!map.hasLayer(nextMarker)) nextMarker.addTo(map);
+  }
+
+  // 2) DIRECTION = grand axe vers lequel on va (avenue / boulevard / voie majeure)
+  const axisCands = roadsAhead(here, hdg, axisAhead, 45);
+  const axis = pickMajorAxis(axisCands);
+  if (axis) {
+    document.getElementById('directionName').textContent = axis.name;
+    document.getElementById('directionMeta').textContent = fmtDist(axis.dist);
+  }
+
+  // 3) VERS = prochaine ville selon cap + vitesse (recalcul à chaque cycle, cache local)
+  const town = pickNextTown(here, hdg, spd);
+  if (town) {
+    document.getElementById('townName').textContent = town.name;
+    document.getElementById('townDist').textContent = `${fmtDist(town.dist)} · ${cardinal(town.brng)}`;
+    const tArrow = document.getElementById('townArrow');
+    tArrow.dataset.brng = town.brng;
+    townMarker.setLatLng(town.point);
+    if (!map.hasLayer(townMarker)) townMarker.addTo(map);
+  }
+
+  // 4) Quartier connu en complément (Nominatim), peu fréquent
+  if (Date.now() - lastGeocodeAt > 8000) {
     lastGeocodeAt = Date.now();
-    const far = destination(here, hdg, cityAhead);
-    dirMarker.setLatLng(far); if (!map.hasLayer(dirMarker)) dirMarker.addTo(map);
-    reverseLocality(far).then(loc => { if (loc) document.getElementById('directionName').textContent = loc; }).catch(() => {});
-    if (!upcoming.length) {
-      const near = destination(here, hdg, streetAhead);
-      nextMarker.setLatLng(near); if (!map.hasLayer(nextMarker)) nextMarker.addTo(map);
-      reverseStreet(near).then(st => { if (st) document.getElementById('nextStreet').textContent = st; }).catch(() => {});
-    }
+    const probe = destination(here, hdg, Math.max(500, axisAhead * 0.6));
+    reverseQuarter(probe).then(q => {
+      const el = document.getElementById('quarter');
+      el.textContent = q ? q : '';
+      el.style.display = q ? 'inline-block' : 'none';
+    }).catch(() => {});
   }
 
   const cur = nearestRoad(here);
   document.getElementById('currentStreet').textContent = cur ? cur.name : '—';
 }
 
-async function fetchRoads(center) {
-  const q = `[out:json][timeout:12];
-    way(around:700,${center[0]},${center[1]})
-      [highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|motorway_link|trunk_link|primary_link|secondary_link)$"][name];
-    out geom;`;
-  const endpoints = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
-  for (const url of endpoints) {
-    try {
-      const res = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q) });
-      if (!res.ok) continue;
-      const data = await res.json();
-      roads = (data.elements || []).filter(e => e.geometry && e.tags && e.tags.name)
-        .map(e => ({ name: e.tags.name, geom: e.geometry.map(g => [g.lat, g.lon]) }));
-      dbg.overpass = `ok (${roads.length})`;
-      return;
-    } catch (e) { dbg.overpass = 'erreur'; }
+/* Rues croisées devant nous, triées par distance */
+function roadsAhead(here, hdg, maxDist, tol) {
+  if (!roads.length) return [];
+  const current = nearestRoad(here);
+  const currentName = current ? current.name : null;
+  const out = [], seen = new Set();
+  for (let d = 30; d <= maxDist; d += 25) {
+    const probe = destination(here, hdg, d);
+    let best = null;
+    for (const road of roads)
+      for (let i = 0; i < road.geom.length - 1; i++) {
+        const seg = pointToSegment(probe, road.geom[i], road.geom[i + 1]);
+        if (!best || seg.dist < best.dist) best = { name: road.name, cls: road.cls, dist: seg.dist, point: seg.point };
+      }
+    if (best && best.dist < 30 && best.name !== currentName && !seen.has(best.name)) {
+      if (Math.abs(angleDiff(hdg, bearing(here, best.point))) < tol) {
+        seen.add(best.name);
+        out.push({ name: best.name, cls: best.cls, dist: haversine(here, best.point), point: best.point });
+      }
+    }
   }
-  dbg.overpass = 'erreur';
+  out.sort((a, b) => a.dist - b.dist);
+  return out;
+}
+
+/* Choisit la voie la plus « importante » parmi les candidates */
+function pickMajorAxis(cands) {
+  let best = null;
+  for (const c of cands) {
+    const s = roadScore(c.cls, c.name) - c.dist / 1500; // pénalise un peu la distance
+    if (!best || s > best.s) best = { name: c.name, dist: c.dist, s };
+  }
+  return best;
 }
 
 function nearestRoad(here) {
@@ -321,51 +374,78 @@ function nearestRoad(here) {
   for (const road of roads)
     for (let i = 0; i < road.geom.length - 1; i++) {
       const seg = pointToSegment(here, road.geom[i], road.geom[i + 1]);
-      if (!best || seg.dist < best.dist) best = { name: road.name, dist: seg.dist, point: seg.point };
+      if (!best || seg.dist < best.dist) best = { name: road.name, dist: seg.dist };
     }
   return best && best.dist < 60 ? best : null;
 }
 
-function predictStreetsFromRoads(here, hdg, maxDist) {
-  if (!roads.length) return [];
-  const current = nearestRoad(here);
-  const currentName = current ? current.name : null;
-  const found = [], seen = new Set();
-  for (let d = 30; d <= maxDist; d += 25) {
-    const probe = destination(here, hdg, d);
-    let best = null;
-    for (const road of roads)
-      for (let i = 0; i < road.geom.length - 1; i++) {
-        const seg = pointToSegment(probe, road.geom[i], road.geom[i + 1]);
-        if (!best || seg.dist < best.dist) best = { name: road.name, dist: seg.dist, point: seg.point };
-      }
-    if (best && best.dist < 30 && best.name !== currentName && !seen.has(best.name)) {
-      if (Math.abs(angleDiff(hdg, bearing(here, best.point))) < 75) {
-        seen.add(best.name);
-        found.push({ name: best.name, dist: haversine(here, best.point), point: best.point });
-      }
-    }
+/* Prochaine ville selon le cap et la vitesse */
+function pickNextTown(here, hdg, spd) {
+  if (!places.length) return null;
+  const ideal = Math.max(3000, Math.min(25000, spd * 150 + 2500)); // vise plus loin si rapide
+  let best = null;
+  for (const p of places) {
+    const dist = haversine(here, p.pt);
+    if (dist < 1500) continue;                       // pas la ville où l'on est déjà
+    const brng = bearing(here, p.pt);
+    const off = Math.abs(angleDiff(hdg, brng));
+    if (off > 55) continue;                          // seulement ce qui est devant
+    const score = p.weight * 2.2
+                - off * 0.045
+                - Math.abs(dist - ideal) / ideal * 1.4;
+    if (!best || score > best.score) best = { name: p.name, dist, brng, point: p.pt, score };
   }
-  found.sort((a, b) => a.dist - b.dist);
-  return found;
+  return best;
 }
 
-/* ---------- Nominatim ---------- */
-async function nominatimReverse(point, zoom) {
-  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${point[0]}&lon=${point[1]}&zoom=${zoom}&accept-language=fr`;
-  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-  if (!res.ok) { dbg.nominatim = 'erreur'; throw new Error('nominatim'); }
-  dbg.nominatim = 'ok';
-  return res.json();
+/* ---------- Overpass : réseau routier ---------- */
+async function fetchRoads(center) {
+  const q = `[out:json][timeout:12];
+    way(around:800,${center[0]},${center[1]})
+      [highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|motorway_link|trunk_link|primary_link|secondary_link)$"][name];
+    out geom;`;
+  const data = await overpass(q);
+  if (!data) { dbg.overpass = 'erreur'; return; }
+  roads = (data.elements || []).filter(e => e.geometry && e.tags && e.tags.name)
+    .map(e => ({ name: e.tags.name, cls: e.tags.highway, geom: e.geometry.map(g => [g.lat, g.lon]) }));
+  dbg.overpass = `ok (${roads.length})`;
 }
-async function reverseStreet(point) {
-  const a = (await nominatimReverse(point, 17)).address || {};
-  return a.road || a.pedestrian || a.footway || a.residential || null;
+
+/* ---------- Overpass : villes / villages ---------- */
+async function fetchPlaces(center) {
+  const q = `[out:json][timeout:15];
+    node(around:25000,${center[0]},${center[1]})[place~"^(city|town|village|suburb)$"][name];
+    out;`;
+  const data = await overpass(q);
+  if (!data) { dbg.places = 'erreur'; return; }
+  const W = { city: 4, town: 3, village: 1.5, suburb: 2 };
+  places = (data.elements || []).filter(e => e.tags && e.tags.name && e.lat)
+    .map(e => ({ name: e.tags.name, pt: [e.lat, e.lon], weight: W[e.tags.place] || 1 }));
+  dbg.places = `ok (${places.length})`;
 }
-async function reverseLocality(point) {
-  const a = (await nominatimReverse(point, 14)).address || {};
-  return a.suburb || a.neighbourhood || a.quarter || a.village || a.town ||
-         a.city_district || a.city || a.municipality || a.county || null;
+
+async function overpass(q) {
+  const endpoints = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
+  for (const url of endpoints) {
+    try {
+      const res = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q) });
+      if (!res.ok) continue;
+      return await res.json();
+    } catch (e) {}
+  }
+  return null;
+}
+
+/* ---------- Nominatim : quartier connu (complément) ---------- */
+async function reverseQuarter(point) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${point[0]}&lon=${point[1]}&zoom=14&accept-language=fr`;
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) { dbg.nominatim = 'erreur'; return null; }
+    dbg.nominatim = 'ok';
+    const a = (await res.json()).address || {};
+    return a.suburb || a.neighbourhood || a.quarter || a.city_district || null;
+  } catch (e) { dbg.nominatim = 'erreur'; return null; }
 }
 
 /* ---------- Wake Lock ---------- */
