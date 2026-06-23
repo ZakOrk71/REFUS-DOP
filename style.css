@@ -178,6 +178,31 @@ html, body {
   cursor: pointer;
 }
 .float-btn:active { transform: scale(0.95); }
+.float-btn.small {
+  width: 42px; height: 42px;
+  font-size: 20px;
+  bottom: 152px;
+}
+
+/* Panneau de débogage */
+#debug {
+  position: absolute;
+  z-index: 600;
+  left: 8px;
+  top: 120px;
+  margin: 0;
+  max-width: 70vw;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.78);
+  color: #6dffb0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  border-radius: 8px;
+  border: 1px solid rgba(109,255,176,0.3);
+  white-space: pre;
+  pointer-events: none;
+}
 
 /* Marqueur GPS directionnel */
 .gps-wrap {

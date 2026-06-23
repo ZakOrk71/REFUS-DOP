@@ -2,13 +2,12 @@
 
 /* =======================================================================
    REFUS-DOP — Assistant de poursuite
-   Suivi GPS temps réel + prédiction de la prochaine rue et de la direction.
-   100% navigateur. Réseau utilisé : fonds de carte (CartoDB/OSM),
-   réseau routier (Overpass), géocodage de localité (Nominatim).
+   Suivi GPS temps réel (boussole + interpolation fluide) + prédiction
+   de la prochaine rue et de la direction. 100% navigateur.
    ======================================================================= */
 
-const CHALON = [46.7806, 4.8537]; // Vue initiale avant le 1er point GPS
-const R = 6371000;                // Rayon terrestre (m)
+const CHALON = [46.7806, 4.8537];
+const R = 6371000;
 
 /* ---------- Outils géo ---------- */
 const toRad = d => d * Math.PI / 180;
@@ -18,44 +17,33 @@ function haversine(a, b) {
   const dLat = toRad(b[0] - a[0]);
   const dLon = toRad(b[1] - a[1]);
   const lat1 = toRad(a[0]), lat2 = toRad(b[0]);
-  const h = Math.sin(dLat / 2) ** 2 +
-            Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
-
 function bearing(a, b) {
   const lat1 = toRad(a[0]), lat2 = toRad(b[0]);
   const dLon = toRad(b[1] - a[1]);
   const y = Math.sin(dLon) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) -
-            Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
-
 function destination(point, brng, dist) {
   const d = dist / R, b = toRad(brng);
   const lat1 = toRad(point[0]), lon1 = toRad(point[1]);
-  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) +
-                         Math.cos(lat1) * Math.sin(d) * Math.cos(b));
-  const lon2 = lon1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(lat1),
-                                 Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(b));
+  const lon2 = lon1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
   return [toDeg(lat2), (toDeg(lon2) + 540) % 360 - 180];
 }
-
 function angleDiff(a, b) { return ((b - a + 540) % 360) - 180; }
-
 function cardinal(deg) {
-  const dirs = ['Nord', 'Nord-Est', 'Est', 'Sud-Est', 'Sud', 'Sud-Ouest', 'Ouest', 'Nord-Ouest'];
-  return dirs[Math.round(deg / 45) % 8];
+  return ['Nord','Nord-Est','Est','Sud-Est','Sud','Sud-Ouest','Ouest','Nord-Ouest'][Math.round(deg / 45) % 8];
 }
-
 function pointToSegment(p, a, b) {
   const mPerLat = 111320, mPerLon = 111320 * Math.cos(toRad(p[0]));
   const ax = (a[1] - p[1]) * mPerLon, ay = (a[0] - p[0]) * mPerLat;
   const bx = (b[1] - p[1]) * mPerLon, by = (b[0] - p[0]) * mPerLat;
-  const dx = bx - ax, dy = by - ay;
-  const len2 = dx * dx + dy * dy;
-  let t = len2 === 0 ? 0 : (-(ax) * dx - (ay) * dy) / len2;
+  const dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+  let t = len2 === 0 ? 0 : (-ax * dx - ay * dy) / len2;
   t = Math.max(0, Math.min(1, t));
   const cx = ax + t * dx, cy = ay + t * dy;
   return { dist: Math.hypot(cx, cy), point: [p[0] + cy / mPerLat, p[1] + cx / mPerLon] };
@@ -65,68 +53,73 @@ function pointToSegment(p, a, b) {
 let map, gpsMarker, accCircle, trailLine, nextMarker, dirMarker;
 const trail = [];
 let lastPos = null, lastTime = null;
-let smoothedHeading = null, smoothedSpeed = 0;
+let smoothedHeading = null, gpsHeading = null, smoothedSpeed = 0;
+let compassHeading = null, lastCompassAt = 0;
 let firstFix = false;
 let lastGeocodeAt = 0, lastOverpassAt = 0, lastOverpassCenter = null;
 let roads = [];
 let watchId = null, wakeLock = null, followMode = true;
 
+// Animation (interpolation fluide entre deux points GPS)
+const anim = { from: null, to: null, start: 0, dur: 1000, render: CHALON };
+
+// Débogage
+const dbg = { fixes: 0, dt: 0, lat: 0, lon: 0, acc: 0, vgps: null, vcalc: 0,
+              hgps: null, overpass: '—', nominatim: '—' };
+let debugOn = false;
+
+/* ---------- Cap courant : boussole prioritaire, sinon GPS ---------- */
+function currentHeading() {
+  if (compassHeading !== null && Date.now() - lastCompassAt < 3000) return compassHeading;
+  return smoothedHeading;
+}
+
 /* ---------- Démarrage ---------- */
 document.getElementById('startBtn').addEventListener('click', start);
+document.getElementById('debugBtn').addEventListener('click', () => {
+  debugOn = !debugOn;
+  document.getElementById('debug').classList.toggle('hidden', !debugOn);
+});
 
 function start() {
   const errEl = document.getElementById('startError');
   errEl.textContent = '';
-  if (!('geolocation' in navigator)) {
-    errEl.textContent = "Ce navigateur ne supporte pas la géolocalisation.";
-    return;
-  }
+  if (!('geolocation' in navigator)) { errEl.textContent = "Géolocalisation non supportée."; return; }
   initMap();
   requestWakeLock();
+  enableCompass();          // demande l'autorisation boussole (geste utilisateur)
   beginWatch();
+  requestAnimationFrame(renderLoop);
+  setInterval(updateReadouts, 200);
   document.getElementById('startOverlay').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('stats').classList.remove('hidden');
   document.getElementById('recenterBtn').classList.remove('hidden');
+  document.getElementById('debugBtn').classList.remove('hidden');
   setStatus('Recherche du signal GPS…');
 }
 
 function beginWatch() {
   if (watchId !== null) navigator.geolocation.clearWatch(watchId);
   watchId = navigator.geolocation.watchPosition(onPosition, onGeoError, {
-    enableHighAccuracy: true,
-    maximumAge: 0,
-    timeout: 20000,
+    enableHighAccuracy: true, maximumAge: 0, timeout: 20000,
   });
 }
-
-function setStatus(msg) {
-  document.getElementById('nextStreet').textContent = msg;
-}
+function setStatus(msg) { document.getElementById('nextStreet').textContent = msg; }
 
 function initMap() {
-  map = L.map('map', { zoomControl: false, attributionControl: true, zoomSnap: 0.5 })
-         .setView(CHALON, 15);
-
-  // Fond de carte épuré (plan simplifié)
+  map = L.map('map', { zoomControl: false, attributionControl: true, zoomSnap: 0.5 }).setView(CHALON, 15);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-    maxZoom: 20,
-    attribution: '© OpenStreetMap © CARTO',
+    maxZoom: 20, attribution: '© OpenStreetMap © CARTO',
   }).addTo(map);
-
   trailLine = L.polyline([], { color: '#2f81f7', weight: 5, opacity: 0.6 }).addTo(map);
   accCircle = L.circle(CHALON, { radius: 0, color: '#2f81f7', weight: 1, fillColor: '#2f81f7', fillOpacity: 0.12 });
-
-  const icon = L.divIcon({
-    className: '',
+  const icon = L.divIcon({ className: '',
     html: '<div class="gps-wrap"><div class="gps-cone"></div><div class="gps-dot"></div></div>',
-    iconSize: [40, 40], iconAnchor: [20, 20],
-  });
+    iconSize: [40, 40], iconAnchor: [20, 20] });
   gpsMarker = L.marker(CHALON, { icon, interactive: false, keyboard: false });
-
   nextMarker = L.circleMarker(CHALON, { radius: 7, color: '#fff', weight: 2, fillColor: '#2f81f7', fillOpacity: 1 });
   dirMarker  = L.circleMarker(CHALON, { radius: 7, color: '#fff', weight: 2, fillColor: '#18c37d', fillOpacity: 1 });
-
   map.on('dragstart', () => { followMode = false; document.getElementById('recenterBtn').classList.add('active'); });
   document.getElementById('recenterBtn').addEventListener('click', () => {
     followMode = true;
@@ -135,100 +128,146 @@ function initMap() {
   });
 }
 
+/* ---------- Boussole (iOS : webkitCompassHeading) ---------- */
+function enableCompass() {
+  const handler = e => {
+    let h = null;
+    if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+      h = e.webkitCompassHeading;                 // iOS : déjà un cap (0 = Nord, sens horaire)
+    } else if (e.absolute && typeof e.alpha === 'number') {
+      h = (360 - e.alpha) % 360;                  // Android absolu
+    }
+    if (h !== null) { compassHeading = h; lastCompassAt = Date.now(); }
+  };
+  const attach = () => {
+    window.addEventListener('deviceorientation', handler, true);
+    window.addEventListener('deviceorientationabsolute', handler, true);
+  };
+  const DOE = window.DeviceOrientationEvent;
+  if (DOE && typeof DOE.requestPermission === 'function') {
+    DOE.requestPermission().then(state => { if (state === 'granted') attach(); }).catch(() => {});
+  } else {
+    attach();
+  }
+}
+
+/* ---------- Boucle d'animation (fluidité temps réel) ---------- */
+function renderLoop() {
+  requestAnimationFrame(renderLoop);
+  if (!anim.to) return;
+  const t = Math.min(1, (performance.now() - anim.start) / anim.dur);
+  const e = t * (2 - t); // ease-out
+  const lat = anim.from[0] + (anim.to[0] - anim.from[0]) * e;
+  const lon = anim.from[1] + (anim.to[1] - anim.from[1]) * e;
+  anim.render = [lat, lon];
+  gpsMarker.setLatLng(anim.render);
+  accCircle.setLatLng(anim.render);
+  if (followMode && map) map.panTo(anim.render, { animate: false });
+
+  const hdg = currentHeading();
+  const wrap = gpsMarker.getElement() && gpsMarker.getElement().querySelector('.gps-wrap');
+  if (wrap) {
+    if (hdg !== null) { wrap.style.transform = `rotate(${hdg}deg)`; wrap.classList.add('moving'); }
+    else wrap.classList.remove('moving');
+  }
+}
+
 /* ---------- GPS ---------- */
 function onPosition(pos) {
   const { latitude, longitude, accuracy, speed, heading } = pos.coords;
   const here = [latitude, longitude];
   const now = pos.timestamp || Date.now();
+  const dt = lastTime ? (now - lastTime) / 1000 : 0;
+  const movedDist = lastPos ? haversine(lastPos, here) : 0;
 
-  // Vitesse : GPS si dispo, sinon calcul via horodatage réel
   let spd = (typeof speed === 'number' && speed >= 0) ? speed : null;
-  let movedDist = lastPos ? haversine(lastPos, here) : 0;
-  if (spd === null && lastPos && lastTime) {
-    const dt = (now - lastTime) / 1000;
-    if (dt > 0.2) spd = movedDist / dt;
-  }
-  if (spd === null) spd = 0;
+  const vcalc = dt > 0.2 ? movedDist / dt : 0;
+  if (spd === null) spd = vcalc;
   smoothedSpeed = smoothedSpeed * 0.5 + spd * 0.5;
 
-  // Cap : GPS si on bouge, sinon depuis le déplacement réel
-  let hdg = null;
-  if (typeof heading === 'number' && !isNaN(heading) && spd > 1.2) {
-    hdg = heading;
-  } else if (lastPos && movedDist > Math.max(5, accuracy * 0.5)) {
-    hdg = bearing(lastPos, here);
-  }
-  if (hdg !== null) {
-    smoothedHeading = (smoothedHeading === null)
-      ? hdg
+  gpsHeading = (typeof heading === 'number' && !isNaN(heading) && spd > 1.2) ? heading : null;
+  let hdg = gpsHeading;
+  if (hdg === null && lastPos && movedDist > Math.max(5, accuracy * 0.5)) hdg = bearing(lastPos, here);
+  if (hdg !== null)
+    smoothedHeading = (smoothedHeading === null) ? hdg
       : (smoothedHeading + angleDiff(smoothedHeading, hdg) * 0.5 + 360) % 360;
-  }
 
-  // Première position : on affiche le marqueur et on zoome dessus
   if (!firstFix) {
     firstFix = true;
-    gpsMarker.addTo(map);
-    accCircle.addTo(map);
+    gpsMarker.addTo(map); accCircle.addTo(map);
     map.setView(here, 17, { animate: true });
+    anim.render = here;
     setStatus('Avance pour calculer la trajectoire…');
   }
 
-  // Trace + marqueur (mise à jour immédiate, à chaque point)
+  // Cible d'animation : on interpole de la position rendue vers le nouveau point
+  anim.from = anim.render || here;
+  anim.to = here;
+  anim.start = performance.now();
+  anim.dur = Math.max(400, Math.min(1500, dt > 0 ? dt * 1000 : 1000));
+
+  accCircle.setRadius(accuracy || 0);
   trail.push(here);
   if (trail.length > 500) trail.shift();
   trailLine.setLatLngs(trail);
-  gpsMarker.setLatLng(here);
-  accCircle.setLatLng(here).setRadius(accuracy || 0);
 
-  // Oriente le cône du marqueur selon le cap
-  const wrap = gpsMarker.getElement() && gpsMarker.getElement().querySelector('.gps-wrap');
-  if (wrap) {
-    if (smoothedHeading !== null) { wrap.style.transform = `rotate(${smoothedHeading}deg)`; wrap.classList.add('moving'); }
-    else wrap.classList.remove('moving');
-  }
-
-  if (followMode) map.setView(here, map.getZoom(), { animate: true, duration: 0.25 });
   lastPos = here; lastTime = now;
 
-  // Stats
-  document.getElementById('speed').textContent = Math.round(smoothedSpeed * 3.6);
-  document.getElementById('accuracy').textContent = accuracy ? Math.round(accuracy) : '—';
-  document.getElementById('heading').textContent =
-    smoothedHeading !== null ? `${cardinal(smoothedHeading)} ${Math.round(smoothedHeading)}°` : '—';
-  const arrow = document.getElementById('directionArrow');
-  if (smoothedHeading !== null) arrow.style.transform = `rotate(${smoothedHeading}deg)`;
+  // Débogage
+  dbg.fixes++; dbg.dt = Math.round(dt * 1000); dbg.lat = latitude; dbg.lon = longitude;
+  dbg.acc = accuracy; dbg.vgps = (typeof speed === 'number' && speed >= 0) ? speed : null;
+  dbg.vcalc = vcalc; dbg.hgps = gpsHeading;
 
   updatePredictions(here);
 }
 
 function onGeoError(err) {
   const msgs = {
-    1: "Localisation refusée. Active le GPS pour ce site : Réglages › Safari › Position, puis « Autoriser ».",
-    2: "Position GPS indisponible (signal faible). Vérifie que tu es à l'extérieur / le GPS activé.",
+    1: "Localisation refusée. Réglages › Safari › Position › Autoriser, puis recharge.",
+    2: "Position GPS indisponible (signal faible).",
     3: "Signal GPS lent à arriver, nouvelle tentative…",
   };
   const msg = msgs[err.code] || err.message;
-  if (!document.getElementById('startOverlay').classList.contains('hidden')) {
+  if (!document.getElementById('startOverlay').classList.contains('hidden'))
     document.getElementById('startError').textContent = msg;
-  } else {
-    setStatus(msg);
-  }
-  // On continue d'essayer (sauf refus explicite, où watchPosition est déjà coupé)
+  else setStatus(msg);
   if (err.code === 3) beginWatch();
+}
+
+/* ---------- Affichage textuel (200 ms) ---------- */
+function updateReadouts() {
+  const hdg = currentHeading();
+  document.getElementById('speed').textContent = Math.round(smoothedSpeed * 3.6);
+  document.getElementById('accuracy').textContent = dbg.acc ? Math.round(dbg.acc) : '—';
+  document.getElementById('heading').textContent = hdg !== null ? `${cardinal(hdg)} ${Math.round(hdg)}°` : '—';
+  const arrow = document.getElementById('directionArrow');
+  if (hdg !== null) arrow.style.transform = `rotate(${hdg}deg)`;
+
+  if (debugOn) {
+    const src = (compassHeading !== null && Date.now() - lastCompassAt < 3000) ? 'boussole' : 'gps';
+    document.getElementById('debug').textContent =
+`FIX #${dbg.fixes}   Δ ${dbg.dt} ms
+lat ${dbg.lat.toFixed(6)}  lon ${dbg.lon.toFixed(6)}
+précision : ${dbg.acc ? Math.round(dbg.acc) + ' m' : '—'}
+vitesse  gps:${dbg.vgps !== null ? (dbg.vgps*3.6).toFixed(1) : '—'}  calc:${(dbg.vcalc*3.6).toFixed(1)} km/h
+cap      gps:${dbg.hgps !== null ? Math.round(dbg.hgps)+'°' : '—'}  boussole:${compassHeading !== null ? Math.round(compassHeading)+'°' : '—'}
+cap utilisé : ${hdg !== null ? Math.round(hdg)+'° ('+src+')' : '—'}
+routes en cache : ${roads.length}
+overpass : ${dbg.overpass}   nominatim : ${dbg.nominatim}`;
+  }
 }
 
 /* ---------- Prédictions ---------- */
 async function updatePredictions(here) {
-  if (smoothedHeading === null) return;
-  const hdg = smoothedHeading;
+  const hdg = currentHeading();
+  if (hdg === null) return;
   const spd = smoothedSpeed;
   const streetAhead = Math.max(80, Math.min(600, spd * 8));
-  const cityAhead   = Math.max(1200, Math.min(6000, spd * 70));
+  const cityAhead = Math.max(1200, Math.min(6000, spd * 70));
 
   if (!lastOverpassCenter || haversine(lastOverpassCenter, here) > 250) {
     if (Date.now() - lastOverpassAt > 4000) {
-      lastOverpassAt = Date.now();
-      lastOverpassCenter = here;
+      lastOverpassAt = Date.now(); lastOverpassCenter = here;
       fetchRoads(here).catch(() => {});
     }
   }
@@ -238,25 +277,17 @@ async function updatePredictions(here) {
     document.getElementById('nextStreet').textContent = upcoming[0].name;
     document.getElementById('upcoming').innerHTML =
       upcoming.slice(1, 4).map(s => `<span class="chip">→ ${s.name}</span>`).join('');
-    if (upcoming[0].point) {
-      nextMarker.setLatLng(upcoming[0].point);
-      if (!map.hasLayer(nextMarker)) nextMarker.addTo(map);
-    }
+    if (upcoming[0].point) { nextMarker.setLatLng(upcoming[0].point); if (!map.hasLayer(nextMarker)) nextMarker.addTo(map); }
   }
 
   if (Date.now() - lastGeocodeAt > 4000) {
     lastGeocodeAt = Date.now();
     const far = destination(here, hdg, cityAhead);
-    dirMarker.setLatLng(far);
-    if (!map.hasLayer(dirMarker)) dirMarker.addTo(map);
-    reverseLocality(far).then(loc => {
-      if (loc) document.getElementById('directionName').textContent = loc;
-    }).catch(() => {});
-
+    dirMarker.setLatLng(far); if (!map.hasLayer(dirMarker)) dirMarker.addTo(map);
+    reverseLocality(far).then(loc => { if (loc) document.getElementById('directionName').textContent = loc; }).catch(() => {});
     if (!upcoming.length) {
       const near = destination(here, hdg, streetAhead);
-      nextMarker.setLatLng(near);
-      if (!map.hasLayer(nextMarker)) nextMarker.addTo(map);
+      nextMarker.setLatLng(near); if (!map.hasLayer(nextMarker)) nextMarker.addTo(map);
       reverseStreet(near).then(st => { if (st) document.getElementById('nextStreet').textContent = st; }).catch(() => {});
     }
   }
@@ -268,8 +299,7 @@ async function updatePredictions(here) {
 async function fetchRoads(center) {
   const q = `[out:json][timeout:12];
     way(around:700,${center[0]},${center[1]})
-      [highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|motorway_link|trunk_link|primary_link|secondary_link)$"]
-      [name];
+      [highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|motorway_link|trunk_link|primary_link|secondary_link)$"][name];
     out geom;`;
   const endpoints = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'];
   for (const url of endpoints) {
@@ -277,12 +307,13 @@ async function fetchRoads(center) {
       const res = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q) });
       if (!res.ok) continue;
       const data = await res.json();
-      roads = (data.elements || [])
-        .filter(e => e.geometry && e.tags && e.tags.name)
+      roads = (data.elements || []).filter(e => e.geometry && e.tags && e.tags.name)
         .map(e => ({ name: e.tags.name, geom: e.geometry.map(g => [g.lat, g.lon]) }));
+      dbg.overpass = `ok (${roads.length})`;
       return;
-    } catch (e) {}
+    } catch (e) { dbg.overpass = 'erreur'; }
   }
+  dbg.overpass = 'erreur';
 }
 
 function nearestRoad(here) {
@@ -323,7 +354,8 @@ function predictStreetsFromRoads(here, hdg, maxDist) {
 async function nominatimReverse(point, zoom) {
   const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${point[0]}&lon=${point[1]}&zoom=${zoom}&accept-language=fr`;
   const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
-  if (!res.ok) throw new Error('nominatim');
+  if (!res.ok) { dbg.nominatim = 'erreur'; throw new Error('nominatim'); }
+  dbg.nominatim = 'ok';
   return res.json();
 }
 async function reverseStreet(point) {
