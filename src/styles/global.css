@@ -81,6 +81,49 @@ html, body, #root {
 .hud-street { font-size: 22px; font-weight: 800; color: var(--accent); line-height: 1.15; word-break: break-word; }
 .hud-quartier { font-size: 22px; font-weight: 800; color: var(--accent-2); line-height: 1.15; word-break: break-word; }
 
+/* ---------- Panneau de prédiction ---------- */
+.predict {
+  position: absolute;
+  top: calc(max(8px, env(safe-area-inset-top)) + 72px);
+  left: 8px; right: 8px;
+  z-index: 410;
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 4px solid var(--accent-2);
+  border-radius: 14px;
+  padding: 9px 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+.predict-head { display: flex; justify-content: space-between; align-items: baseline; }
+.predict-title { font-size: 10px; letter-spacing: 1.4px; color: var(--muted); font-weight: 700; }
+.predict-dist { font-size: 13px; font-weight: 800; }
+.exits { margin-top: 6px; display: flex; flex-direction: column; gap: 5px; }
+.exit {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+.exit.top { background: rgba(22, 195, 125, 0.12); }
+.exit-icon { font-size: 18px; width: 20px; text-align: center; z-index: 1; }
+.exit-name { flex: 1; font-size: 17px; font-weight: 800; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 1; }
+.exit-pct { font-size: 16px; font-weight: 900; color: var(--accent-2); z-index: 1; }
+.exit-bar {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: rgba(22, 195, 125, 0.16);
+  z-index: 0;
+}
+.exits-empty { margin-top: 6px; font-size: 15px; font-weight: 700; color: var(--accent-2); }
+.predict-axis { margin-top: 7px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.predict-quartier { color: var(--accent-2); }
+
 .speedo {
   position: absolute;
   left: 50%;

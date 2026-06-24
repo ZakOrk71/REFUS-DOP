@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { GpsFix, MapOrientation } from '../types';
+import type { Prediction } from '../lib/roadGraph';
 
 interface AppState {
   /** Suivi GPS actif (session démarrée). */
@@ -20,8 +21,12 @@ interface AppState {
 
   /** Quartier courant (détecté). */
   currentQuartier: string | null;
-  /** Rue courante (renseignée en Phase 3). */
+  /** Rue courante (issue du moteur de prédiction). */
   currentStreet: string | null;
+  /** Dernière prédiction calculée par le worker. */
+  prediction: Prediction | null;
+  /** Nombre de voies chargées dans le graphe routier. */
+  roadsLoaded: number;
 
   // Actions
   setSessionActive: (v: boolean) => void;
@@ -33,6 +38,8 @@ interface AppState {
   setFollow: (v: boolean) => void;
   setCurrentQuartier: (q: string | null) => void;
   setCurrentStreet: (s: string | null) => void;
+  setPrediction: (p: Prediction | null) => void;
+  setRoadsLoaded: (n: number) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -45,6 +52,8 @@ export const useAppStore = create<AppState>((set) => ({
   follow: true,
   currentQuartier: null,
   currentStreet: null,
+  prediction: null,
+  roadsLoaded: 0,
 
   setSessionActive: (v) => set({ sessionActive: v }),
   setFix: (fix) => set({ fix, gpsError: null }),
@@ -56,6 +65,8 @@ export const useAppStore = create<AppState>((set) => ({
   setFollow: (follow) => set({ follow }),
   setCurrentQuartier: (currentQuartier) => set({ currentQuartier }),
   setCurrentStreet: (currentStreet) => set({ currentStreet }),
+  setPrediction: (prediction) => set({ prediction }),
+  setRoadsLoaded: (roadsLoaded) => set({ roadsLoaded }),
 }));
 
 /**

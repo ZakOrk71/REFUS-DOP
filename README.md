@@ -60,8 +60,12 @@ legacy/     ancienne app vanilla (archivée, fallback simple)
 - ✅ **Phase 0** — Scaffold (Vite/React/TS, PWA, CI Pages, store, lib géo, données quartiers)
 - ✅ **Phase 1** — Carte temps réel fluide : MapLibre sombre, GPS+Kalman, boussole,
   interpolation 60 fps, heading-up, zoom adaptatif, HUD (vitesse/rue/quartier), Wake Lock
-- ⏳ Phases 2 à 7 (graphe routier, prédiction, quartiers polygones, enregistrement,
-  historique, robustesse + rejeu GPX) — voir HANDOFF.md
+- ✅ **Phase 2** — Graphe routier : Overpass (sens uniques/accès/classes), cache Dexie
+  par cellule (offline-first), préchargement devant le véhicule, construction dans un Web Worker
+- ✅ **Phase 3** — Moteur de prédiction (worker) : sorties d'intersection **autorisées**
+  (sens interdits/accès exclus), **probabilités %** (inertie + hiérarchie + alignement),
+  grand axe visé, itinéraire probable tracé sur la carte
+- ⏳ Phases 4 à 7 (quartiers polygones, enregistrement, historique, robustesse + rejeu GPX) — voir HANDOFF.md
 
 ## Note sur les fonds de carte
 

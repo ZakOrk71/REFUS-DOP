@@ -51,6 +51,24 @@ export function MapView(): React.JSX.Element {
     });
     mapRef.current = map;
 
+    // Couche « itinéraire probable » (mise à jour quand la prédiction change).
+    let routeReady = false;
+    let lastPoly: unknown = null;
+    map.on('load', () => {
+      map.addSource('route', {
+        type: 'geojson',
+        data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [] } },
+      });
+      map.addLayer({
+        id: 'route',
+        type: 'line',
+        source: 'route',
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#16c37d', 'line-width': 6, 'line-opacity': 0.65 },
+      });
+      routeReady = true;
+    });
+
     // Quitter le suivi si l'utilisateur déplace la carte manuellement
     // (dragstart n'est émis que par un glissement utilisateur, pas par jumpTo).
     map.on('dragstart', () => useAppStore.getState().setFollow(false));
@@ -89,6 +107,17 @@ export function MapView(): React.JSX.Element {
           r.heading = lerpAngle(r.heading, targetHeading, 0.2);
           r.zoom += (targetZoom - r.zoom) * 0.08;
         }
+      }
+
+      // Itinéraire probable : ne redessine que quand la prédiction a changé.
+      if (routeReady && s.prediction && s.prediction.poly !== lastPoly) {
+        lastPoly = s.prediction.poly;
+        const src = map.getSource('route') as maplibregl.GeoJSONSource | undefined;
+        src?.setData({
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'LineString', coordinates: s.prediction.poly.map((p) => [p.lng, p.lat]) },
+        });
       }
 
       marker.setLngLat([r.pos.lng, r.pos.lat]);

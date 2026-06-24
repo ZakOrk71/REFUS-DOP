@@ -67,8 +67,8 @@ src/
 
 - [x] Phase 0 — Scaffold
 - [x] Phase 1 — Carte temps réel fluide
-- [ ] Phase 2 — Graphe routier
-- [ ] Phase 3 — Moteur de prédiction
+- [x] Phase 2 — Graphe routier (Overpass + cache Dexie par cellule, préchargement, worker)
+- [x] Phase 3 — Moteur de prédiction (worker : sorties légales, probabilités %, grand axe, itinéraire)
 - [ ] Phase 4 — Quartiers (polygones)
 - [ ] Phase 5 — Enregistrement trajet
 - [ ] Phase 6 — Historique
