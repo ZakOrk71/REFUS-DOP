@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { GeoKalman } from '../lib/kalman';
-import { bearing, haversine } from '../lib/geo';
-import type { LatLng } from '../types';
+import { bearing, haversine, destination } from '../lib/geo';
+import type { GpsFix, LatLng } from '../types';
 
 /**
  * Suit la position GPS quand la session est active : `watchPosition` haute
@@ -11,20 +11,23 @@ import type { LatLng } from '../types';
  */
 export function useGeolocation(): void {
   const sessionActive = useAppStore((s) => s.sessionActive);
+  const demoMode = useAppStore((s) => s.demoMode);
   const setFix = useAppStore((s) => s.setFix);
   const setGpsError = useAppStore((s) => s.setGpsError);
 
   const kalman = useRef(new GeoKalman(3));
   const prev = useRef<{ pos: LatLng; t: number } | null>(null);
+  const lastFix = useRef<GpsFix | null>(null);
 
   useEffect(() => {
-    if (!sessionActive) return;
+    if (!sessionActive || demoMode) return; // le mode démo pilote setFix lui-même
     if (!('geolocation' in navigator)) {
       setGpsError('Géolocalisation non supportée par ce navigateur.');
       return;
     }
     kalman.current.reset();
     prev.current = null;
+    lastFix.current = null;
 
     const onPos = (p: GeolocationPosition) => {
       const { latitude, longitude, accuracy, speed, heading } = p.coords;
@@ -50,7 +53,9 @@ export function useGeolocation(): void {
       }
 
       prev.current = { pos, t };
-      setFix({ pos, raw, accuracy: accuracy ?? 0, speed: spd, heading: hdg, timestamp: t });
+      const fix: GpsFix = { pos, raw, accuracy: accuracy ?? 0, speed: spd, heading: hdg, timestamp: t };
+      lastFix.current = fix;
+      setFix(fix);
     };
 
     const onErr = (e: GeolocationPositionError) => {
@@ -67,6 +72,21 @@ export function useGeolocation(): void {
       maximumAge: 0,
       timeout: 20000,
     });
-    return () => navigator.geolocation.clearWatch(id);
-  }, [sessionActive, setFix, setGpsError]);
+
+    // Dead reckoning : en cas de perte de signal (> 2,5 s sans point réel),
+    // on extrapole la position depuis le dernier cap et la dernière vitesse.
+    const dr = window.setInterval(() => {
+      const f = lastFix.current;
+      if (!f || f.heading === null || f.speed < 1) return;
+      const dt = (Date.now() - f.timestamp) / 1000;
+      if (dt < 2.5) return;
+      const pos = destination(f.pos, f.heading, f.speed * dt);
+      setFix({ ...f, pos, raw: pos, accuracy: (f.accuracy || 15) + dt * 2, timestamp: Date.now() });
+    }, 1000);
+
+    return () => {
+      navigator.geolocation.clearWatch(id);
+      window.clearInterval(dr);
+    };
+  }, [sessionActive, demoMode, setFix, setGpsError]);
 }

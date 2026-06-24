@@ -12,6 +12,7 @@ import { useNeighborhood } from './hooks/useNeighborhood';
 import { useRoadGraph } from './hooks/useRoadGraph';
 import { useDirectionPredictor } from './hooks/useDirectionPredictor';
 import { useTripRecorder } from './hooks/useTripRecorder';
+import { useSimulator } from './hooks/useSimulator';
 import { useAppStore } from './store/useAppStore';
 
 export default function App(): React.JSX.Element {
@@ -24,6 +25,7 @@ export default function App(): React.JSX.Element {
   useRoadGraph();
   useDirectionPredictor();
   useTripRecorder();
+  useSimulator();
   useWakeLock(sessionActive);
 
   return (

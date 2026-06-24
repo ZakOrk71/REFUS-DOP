@@ -5,6 +5,7 @@ import { msToKmh } from '../lib/format';
 export function Hud(): React.JSX.Element {
   const fix = useAppStore((s) => s.fix);
   const quartier = useAppStore((s) => s.currentQuartier);
+  const nextQuartier = useAppStore((s) => s.nextQuartier);
   const street = useAppStore((s) => s.currentStreet);
   const gpsError = useAppStore((s) => s.gpsError);
   const sessionActive = useAppStore((s) => s.sessionActive);
@@ -19,6 +20,7 @@ export function Hud(): React.JSX.Element {
         <div className="hud-card">
           <span className="hud-label">QUARTIER</span>
           <span className="hud-quartier">{quartier ?? '—'}</span>
+          {nextQuartier && <span className="hud-next">→ {nextQuartier}</span>}
         </div>
       </div>
 

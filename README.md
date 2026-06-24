@@ -68,7 +68,15 @@ legacy/     ancienne app vanilla (archivée, fallback simple)
 - ✅ **Phase 5** — Enregistrement automatique du trajet : polyligne horodatée, journal des
   rues et quartiers, distance/vitesses, sauvegarde IndexedDB, **export JSON / GPX / compte-rendu texte**
 - ✅ **Phase 6** — Historique des trajets : liste hors-ligne, récapitulatif, suppression
-- ⏳ Phases 4 et 7 (quartiers polygones, robustesse GPS + **rejeu GPX pour tester sans bouger**) — voir HANDOFF.md
+- ✅ **Phase 4** — Quartiers : détection **point-in-polygon** (polygones OSM) avec repli sur les
+  points embarqués, + annonce du **prochain quartier** selon le cap
+- ✅ **Phase 7** — Robustesse : **dead reckoning** sur perte de signal GPS, **mode démo / rejeu GPX**
+  pour tester sans bouger
+
+### Tester sans bouger
+Sur l'écran de démarrage : **« Mode démo (rejeu) »** rejoue un trajet intégré à travers Chalon,
+ou **« Rejouer un GPX »** pour importer ta propre trace. Idéal pour voir la prédiction et
+l'enregistrement fonctionner depuis un ordinateur.
 
 ## Note sur les fonds de carte
 

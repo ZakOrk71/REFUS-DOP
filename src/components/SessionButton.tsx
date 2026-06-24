@@ -4,6 +4,7 @@ import { useAppStore } from '../store/useAppStore';
 export function SessionButton(): React.JSX.Element {
   const sessionActive = useAppStore((s) => s.sessionActive);
   const setSessionActive = useAppStore((s) => s.setSessionActive);
+  const setDemoMode = useAppStore((s) => s.setDemoMode);
   const orientation = useAppStore((s) => s.orientation);
   const toggleOrientation = useAppStore((s) => s.toggleOrientation);
   const follow = useAppStore((s) => s.follow);
@@ -33,7 +34,13 @@ export function SessionButton(): React.JSX.Element {
       </div>
 
       {sessionActive && (
-        <button className="session-btn stop" onClick={() => setSessionActive(false)}>
+        <button
+          className="session-btn stop"
+          onClick={() => {
+            setSessionActive(false);
+            setDemoMode(false);
+          }}
+        >
           ■ ARRÊTER
         </button>
       )}

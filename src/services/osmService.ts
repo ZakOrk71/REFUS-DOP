@@ -60,6 +60,31 @@ function parseWay(e: OverpassWay): RoadSegment | null {
   };
 }
 
+interface OverpassPolyWay {
+  type: 'way';
+  id: number;
+  tags?: Record<string, string>;
+  geometry?: { lat: number; lon: number }[];
+}
+
+/** Récupère les polygones de quartiers (voies fermées place=…) autour du centre. */
+export async function fetchNeighborhoods(
+  center: LatLng,
+  radius = 4000,
+): Promise<import('../lib/polygon').NeighborhoodPoly[]> {
+  const q = `[out:json][timeout:25];
+    way(around:${radius},${center.lat},${center.lng})[place~"^(suburb|quarter|neighbourhood)$"][name];
+    out geom;`;
+  const data = await overpass(q);
+  if (!data) return [];
+  return (data.elements as OverpassPolyWay[])
+    .filter((e) => e.type === 'way' && e.geometry && e.geometry.length >= 4 && e.tags?.name)
+    .map((e) => ({
+      name: e.tags!.name,
+      ring: e.geometry!.map((g) => ({ lat: g.lat, lng: g.lon })),
+    }));
+}
+
 async function overpass(query: string): Promise<{ elements: unknown[] } | null> {
   for (const url of ENDPOINTS) {
     try {

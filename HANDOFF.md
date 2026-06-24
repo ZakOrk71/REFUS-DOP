@@ -69,7 +69,7 @@ src/
 - [x] Phase 1 — Carte temps réel fluide
 - [x] Phase 2 — Graphe routier (Overpass + cache Dexie par cellule, préchargement, worker)
 - [x] Phase 3 — Moteur de prédiction (worker : sorties légales, probabilités %, grand axe, itinéraire)
-- [ ] Phase 4 — Quartiers (polygones)
+- [x] Phase 4 — Quartiers : point-in-polygon (polygones OSM) + repli points embarqués, prochain quartier selon le cap
 - [x] Phase 5 — Enregistrement trajet (Dexie, rues/quartiers horodatés, récap, export JSON/GPX/texte)
 - [x] Phase 6 — Historique (liste, récap, suppression)
-- [ ] Phase 7 — Robustesse & test
+- [x] Phase 7 — Robustesse & test : dead reckoning (perte GPS) + mode démo / rejeu GPX pour tester sans bouger

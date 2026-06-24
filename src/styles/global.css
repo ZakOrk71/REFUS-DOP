@@ -80,6 +80,7 @@ html, body, #root {
 }
 .hud-street { font-size: 22px; font-weight: 800; color: var(--accent); line-height: 1.15; word-break: break-word; }
 .hud-quartier { font-size: 22px; font-weight: 800; color: var(--accent-2); line-height: 1.15; word-break: break-word; }
+.hud-next { display: block; font-size: 12px; font-weight: 700; color: var(--muted); margin-top: 1px; }
 
 /* ---------- Panneau de prédiction ---------- */
 .predict {
@@ -223,6 +224,19 @@ html, body, #root {
 .gate-sub { color: var(--muted); margin: 0 0 18px; font-weight: 700; }
 .gate-desc { color: var(--text); font-size: 15px; line-height: 1.5; margin-bottom: 26px; }
 .gate .session-btn { position: static; margin: 0; }
+.gate-demo { display: flex; gap: 8px; margin-top: 12px; }
+.gate-demo-btn {
+  flex: 1;
+  padding: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.gate-demo-btn:active { transform: scale(0.98); }
 .gate-hint { color: var(--muted); font-size: 12px; margin-top: 16px; line-height: 1.4; }
 
 /* ---------- Modales (récap / historique) ---------- */
