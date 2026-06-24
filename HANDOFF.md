@@ -70,6 +70,6 @@ src/
 - [x] Phase 2 — Graphe routier (Overpass + cache Dexie par cellule, préchargement, worker)
 - [x] Phase 3 — Moteur de prédiction (worker : sorties légales, probabilités %, grand axe, itinéraire)
 - [ ] Phase 4 — Quartiers (polygones)
-- [ ] Phase 5 — Enregistrement trajet
-- [ ] Phase 6 — Historique
+- [x] Phase 5 — Enregistrement trajet (Dexie, rues/quartiers horodatés, récap, export JSON/GPX/texte)
+- [x] Phase 6 — Historique (liste, récap, suppression)
 - [ ] Phase 7 — Robustesse & test

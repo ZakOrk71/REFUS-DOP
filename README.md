@@ -65,7 +65,10 @@ legacy/     ancienne app vanilla (archivée, fallback simple)
 - ✅ **Phase 3** — Moteur de prédiction (worker) : sorties d'intersection **autorisées**
   (sens interdits/accès exclus), **probabilités %** (inertie + hiérarchie + alignement),
   grand axe visé, itinéraire probable tracé sur la carte
-- ⏳ Phases 4 à 7 (quartiers polygones, enregistrement, historique, robustesse + rejeu GPX) — voir HANDOFF.md
+- ✅ **Phase 5** — Enregistrement automatique du trajet : polyligne horodatée, journal des
+  rues et quartiers, distance/vitesses, sauvegarde IndexedDB, **export JSON / GPX / compte-rendu texte**
+- ✅ **Phase 6** — Historique des trajets : liste hors-ligne, récapitulatif, suppression
+- ⏳ Phases 4 et 7 (quartiers polygones, robustesse GPS + **rejeu GPX pour tester sans bouger**) — voir HANDOFF.md
 
 ## Note sur les fonds de carte
 

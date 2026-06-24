@@ -19,6 +19,11 @@ interface AppState {
   /** Caméra qui suit le véhicule. */
   follow: boolean;
 
+  /** Vue active de l'application. */
+  view: 'live' | 'history';
+  /** Trajet dont on affiche le récapitulatif (null = aucun). */
+  summaryTripId: number | null;
+
   /** Quartier courant (détecté). */
   currentQuartier: string | null;
   /** Rue courante (issue du moteur de prédiction). */
@@ -40,6 +45,8 @@ interface AppState {
   setCurrentStreet: (s: string | null) => void;
   setPrediction: (p: Prediction | null) => void;
   setRoadsLoaded: (n: number) => void;
+  setView: (v: 'live' | 'history') => void;
+  setSummaryTripId: (id: number | null) => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -50,6 +57,8 @@ export const useAppStore = create<AppState>((set) => ({
   gpsError: null,
   orientation: 'heading-up',
   follow: true,
+  view: 'live',
+  summaryTripId: null,
   currentQuartier: null,
   currentStreet: null,
   prediction: null,
@@ -67,6 +76,8 @@ export const useAppStore = create<AppState>((set) => ({
   setCurrentStreet: (currentStreet) => set({ currentStreet }),
   setPrediction: (prediction) => set({ prediction }),
   setRoadsLoaded: (roadsLoaded) => set({ roadsLoaded }),
+  setView: (view) => set({ view }),
+  setSummaryTripId: (summaryTripId) => set({ summaryTripId }),
 }));
 
 /**

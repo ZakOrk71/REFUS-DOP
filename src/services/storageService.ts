@@ -73,3 +73,18 @@ export async function getCachedCell(id: string): Promise<RoadCell | undefined> {
 export async function putCachedCell(id: string, roads: RoadSegment[]): Promise<void> {
   await db.roadCells.put({ id, ts: Date.now(), roads });
 }
+
+/* ---------- Trajets ---------- */
+
+export async function addTrip(trip: Trip): Promise<number> {
+  return db.trips.add(trip);
+}
+export async function listTrips(): Promise<Trip[]> {
+  return db.trips.orderBy('startedAt').reverse().toArray();
+}
+export async function getTrip(id: number): Promise<Trip | undefined> {
+  return db.trips.get(id);
+}
+export async function deleteTrip(id: number): Promise<void> {
+  await db.trips.delete(id);
+}

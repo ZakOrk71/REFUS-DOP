@@ -8,10 +8,14 @@ export function SessionButton(): React.JSX.Element {
   const toggleOrientation = useAppStore((s) => s.toggleOrientation);
   const follow = useAppStore((s) => s.follow);
   const setFollow = useAppStore((s) => s.setFollow);
+  const setView = useAppStore((s) => s.setView);
 
   return (
     <>
       <div className="float-controls">
+        <button className="fbtn" onClick={() => setView('history')} title="Historique des trajets">
+          🕘
+        </button>
         <button
           className={`fbtn ${orientation === 'heading-up' ? 'on' : ''}`}
           onClick={toggleOrientation}
